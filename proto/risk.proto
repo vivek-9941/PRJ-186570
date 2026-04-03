@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package trade.risk;
+
+option java_multiple_files = true;
+option java_package = "org.vivek.trade.risk.grpc";
+option java_outer_classname = "RiskProto";
+
+service RiskService {
+  rpc Validate (ValidationRequest) returns (ValidationResponse);
+}
+
+message ValidationRequest {
+  string order_id = 1;
+  string user_id  = 2;
+  string symbol   = 3;
+  string side     = 4;
+  double quantity = 5;
+  double price    = 6;
+}
+
+message ValidationResponse {
+  bool   success    = 1;
+  string service_id = 2;
+  string reason     = 3;
+  int64  latency_ms = 4;
+}
