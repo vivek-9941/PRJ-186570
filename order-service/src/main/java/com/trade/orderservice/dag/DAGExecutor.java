@@ -1,0 +1,187 @@
+package com.trade.orderservice.dag;
+
+import com.google.common.util.concurrent.ListenableFuture;
+import io.micrometer.core.annotation.Timed;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
+import org.vivek.commonmodule.model.DAGResult;
+import org.vivek.commonmodule.model.Order;
+import org.vivek.commonmodule.model.TaskResult;
+import org.vivek.trade.compliance.grpc.ComplianceServiceGrpc;
+import org.vivek.trade.margin.grpc.MarginServiceGrpc;
+import org.vivek.trade.risk.grpc.RiskServiceGrpc;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+
+@Component
+@Slf4j
+public class DAGExecutor {
+
+    private final RiskServiceGrpc.RiskServiceFutureStub riskStub;
+    private final MarginServiceGrpc.MarginServiceFutureStub marginStub;
+    private final ComplianceServiceGrpc.ComplianceServiceFutureStub complianceStub;
+    private final ApplicationEventPublisher eventPublisher;
+
+    private final ExecutorService executorService;
+    private final ScheduledExecutorService scheduledExecutor;
+
+    public DAGExecutor(RiskServiceGrpc.RiskServiceFutureStub riskStub,
+                       MarginServiceGrpc.MarginServiceFutureStub marginStub,
+                       ComplianceServiceGrpc.ComplianceServiceFutureStub complianceStub,
+                       ApplicationEventPublisher eventPublisher) {
+        this.riskStub = riskStub;
+        this.marginStub = marginStub;
+        this.complianceStub = complianceStub;
+        this.eventPublisher = eventPublisher;
+
+        ThreadFactory threadFactory = new ThreadFactory() {
+            private int count = 0;
+            @Override
+            public Thread newThread(Runnable r) {
+                return new Thread(r, "dag-worker-" + (++count));
+            }
+        };
+        this.executorService = Executors.newFixedThreadPool(10, threadFactory);
+        this.scheduledExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> new Thread(runnable, "dag-scheduler"));
+    }
+
+    @Timed("dag.execution")
+    public CompletableFuture<DAGResult> execute(Order order) {
+        log.info("Starting DAG execution for order: {}", order.getOrderId());
+
+        CompletableFuture<TaskResult> riskTask = executeWithRetry("risk-service", order, () -> {
+            org.vivek.trade.risk.grpc.ValidationRequest request = org.vivek.trade.risk.grpc.ValidationRequest.newBuilder()
+                    .setOrderId(order.getOrderId())
+                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                    .setSide(order.getSide() != null ? order.getSide().name() : "")
+                    .setQuantity(order.getQuantity())
+                    .setPrice(order.getPrice())
+                    .build();
+            return toCompletableFuture(riskStub.validate(request))
+                    .thenApply(res -> TaskResult.builder()
+                            .serviceId(res.getServiceId())
+                            .success(res.getSuccess())
+                            .reason(res.getReason())
+                            .latencyMs(res.getLatencyMs())
+                            .build());
+        });
+
+        CompletableFuture<TaskResult> marginTask = executeWithRetry("margin-service", order, () -> {
+            org.vivek.trade.margin.grpc.ValidationRequest request = org.vivek.trade.margin.grpc.ValidationRequest.newBuilder()
+                    .setOrderId(order.getOrderId())
+                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                    .setSide(order.getSide() != null ? order.getSide().name() : "")
+                    .setQuantity(order.getQuantity())
+                    .setPrice(order.getPrice())
+                    .build();
+            return toCompletableFuture(marginStub.validate(request))
+                    .thenApply(res -> TaskResult.builder()
+                            .serviceId(res.getServiceId())
+                            .success(res.getSuccess())
+                            .reason(res.getReason())
+                            .latencyMs(res.getLatencyMs())
+                            .build());
+        });
+
+        CompletableFuture<TaskResult> complianceTask = executeWithRetry("compliance-service", order, () -> {
+            org.vivek.trade.compliance.grpc.ValidationRequest request = org.vivek.trade.compliance.grpc.ValidationRequest.newBuilder()
+                    .setOrderId(order.getOrderId())
+                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                    .setSide(order.getSide() != null ? order.getSide().name() : "")
+                    .setQuantity(order.getQuantity())
+                    .setPrice(order.getPrice())
+                    .build();
+            return toCompletableFuture(complianceStub.validate(request))
+                    .thenApply(res -> TaskResult.builder()
+                            .serviceId(res.getServiceId())
+                            .success(res.getSuccess())
+                            .reason(res.getReason())
+                            .latencyMs(res.getLatencyMs())
+                            .build());
+        });
+
+        return CompletableFuture.allOf(riskTask, marginTask, complianceTask).thenApply(v -> {
+            List<TaskResult> results = Arrays.asList(riskTask.join(), marginTask.join(), complianceTask.join());
+            log.info("All tasks completed for order: {}", order.getOrderId());
+            return DAGResult.from(order.getOrderId(), results);
+        });
+    }
+
+    private CompletableFuture<TaskResult> executeWithRetry(String serviceId, Order order, Supplier<CompletableFuture<TaskResult>> taskSupplier) {
+        long start = System.currentTimeMillis();
+        eventPublisher.publishEvent(new TaskStartedEvent(this, order.getOrderId(), serviceId));
+        
+        // As per requirements: "Fire all three gRPC calls simultaneously using CompletableFuture.supplyAsync() on a named thread pool"
+        return CompletableFuture.supplyAsync(() -> retryAsync(taskSupplier, 2, 100), executorService)
+                .thenCompose(fn -> fn)
+                .handle((result, ex) -> {
+                    long latencyMs = System.currentTimeMillis() - start;
+                    if (ex != null) {
+                        log.warn("Task failed for order {} on service {}: {}", order.getOrderId(), serviceId, ex.getMessage());
+                        eventPublisher.publishEvent(new TaskCompletedEvent(this, order.getOrderId(), serviceId, false, latencyMs));
+                        return TaskResult.builder()
+                                .serviceId(serviceId)
+                                .success(false)
+                                .reason(ex.getMessage() != null ? ex.getMessage() : "Timeout or unknown error")
+                                .latencyMs(latencyMs)
+                                .build();
+                    } else {
+                        eventPublisher.publishEvent(new TaskCompletedEvent(this, order.getOrderId(), serviceId, result.isSuccess(), latencyMs));
+                        return result;
+                    }
+                });
+    }
+
+    private CompletableFuture<TaskResult> retryAsync(Supplier<CompletableFuture<TaskResult>> supplier, int retriesLeft, long delayMs) {
+        // Wrap each gRPC future with a 500ms timeout
+        return supplier.get().orTimeout(500, TimeUnit.MILLISECONDS).handle((result, ex) -> {
+            if (ex != null || (result != null && !result.isSuccess())) {
+                if (retriesLeft > 0) {
+                    log.warn("Retrying task due to failure/timeout, retries left: {}", retriesLeft);
+                    CompletableFuture<TaskResult> retryFuture = new CompletableFuture<>();
+                    scheduledExecutor.schedule(() -> {
+                        retryAsync(supplier, retriesLeft - 1, delayMs)
+                                .whenComplete((r, e) -> {
+                                    if (e != null) retryFuture.completeExceptionally(e);
+                                    else retryFuture.complete(r);
+                                });
+                    }, delayMs, TimeUnit.MILLISECONDS);
+                    return retryFuture;
+                } else {
+                    log.error("Retry limit exceeded for task");
+                    if (ex != null) throw new CompletionException(ex);
+                    return CompletableFuture.completedFuture(result);
+                }
+            }
+            return CompletableFuture.completedFuture(result);
+        }).thenCompose(fn -> fn);
+    }
+
+    private <T> CompletableFuture<T> toCompletableFuture(ListenableFuture<T> listenableFuture) {
+        CompletableFuture<T> completableFuture = new CompletableFuture<T>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                boolean result = listenableFuture.cancel(mayInterruptIfRunning);
+                super.cancel(mayInterruptIfRunning);
+                return result;
+            }
+        };
+        listenableFuture.addListener(() -> {
+            try {
+                completableFuture.complete(listenableFuture.get());
+            } catch (ExecutionException e) {
+                completableFuture.completeExceptionally(e.getCause());
+            } catch (InterruptedException e) {
+                completableFuture.completeExceptionally(e);
+            }
+        }, executorService);
+        return completableFuture;
+    }
+}
