@@ -8,6 +8,7 @@ public enum OrderStatus {
     ROUTED,
     PARTIALLY_FILLED,
     FULLY_FILLED,
+    CANCELLED,
     EXECUTED,
     FAILED
 }
