@@ -9,6 +9,7 @@ import org.vivek.commonmodule.model.TradeExecution;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OrderBookTest {
@@ -62,6 +63,21 @@ class OrderBookTest {
         assertEquals(1, remainderExecutions.size());
         assertEquals(1.5d, remainderExecutions.get(0).getQuantity());
         assertEquals("buy-1", remainderExecutions.get(0).getBuyOrderId());
+    }
+
+    @Test
+    void cancelRemovesOrderFromBook() {
+        Order restingBuy = order("buy-1", OrderSide.BUY, 4.0d, 99.0d);
+        assertTrue(orderBook.match(restingBuy).isEmpty());
+
+        assertTrue(orderBook.cancel("buy-1"));
+
+        Order incomingSell = order("sell-1", OrderSide.SELL, 2.0d, 99.0d);
+        List<TradeExecution> executions = orderBook.match(incomingSell);
+
+        assertTrue(executions.isEmpty());
+        assertEquals(OrderStatus.PENDING, incomingSell.getStatus());
+        assertFalse(orderBook.cancel("missing-order"));
     }
 
     private Order order(String orderId, OrderSide side, double quantity, double price) {

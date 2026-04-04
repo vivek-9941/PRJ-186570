@@ -2,10 +2,12 @@ package org.vivek.order.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderStatus;
+import org.vivek.order.client.MatchingEngineClient;
 import org.vivek.order.dto.PlaceOrderRequest;
 import org.vivek.order.repository.OrderRepository;
 import org.vivek.order.service.OrderService;
@@ -22,6 +24,7 @@ public class OrderController {
 
     private final OrderService orderService;
     private final OrderRepository orderRepository;
+    private final MatchingEngineClient matchingEngineClient;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> placeOrder(@Valid @RequestBody PlaceOrderRequest request) {
@@ -61,5 +64,30 @@ public class OrderController {
     public ResponseEntity<List<Order>> getOrdersByUser(@PathVariable String userId) {
         List<Order> orders = orderRepository.findByUserId(userId);
         return ResponseEntity.ok(orders);
+    }
+
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<Map<String, Object>> cancelOrder(@PathVariable String orderId) {
+        Order order = orderRepository.findById(orderId);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        OrderStatus status = order.getStatus();
+        if (status != OrderStatus.PENDING && status != OrderStatus.PARTIALLY_FILLED) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "Cannot cancel order in status " + status));
+        }
+
+        matchingEngineClient.cancel(orderId);
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setUpdatedAt(Instant.now());
+        orderRepository.save(order);
+
+        return ResponseEntity.ok(Map.of(
+                "orderId", order.getOrderId(),
+                "status", order.getStatus().name(),
+                "message", "Order cancelled"
+        ));
     }
 }

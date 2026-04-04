@@ -55,6 +55,18 @@ public class OrderBook {
         return executions;
     }
 
+    public synchronized boolean cancel(String orderId) {
+        return cancelOrder(orderId) != null;
+    }
+
+    public synchronized Order cancelOrder(String orderId) {
+        Order cancelledBuy = cancelFromBook(buyOrders, orderId);
+        if (cancelledBuy != null) {
+            return cancelledBuy;
+        }
+        return cancelFromBook(sellOrders, orderId);
+    }
+
     private double executeIncomingBuy(Order incomingBuy, double remainingQty,
                                       List<TradeExecution> executions, double bestAsk) {
         ConcurrentLinkedQueue<Order> queue = sellOrders.get(bestAsk);
@@ -131,6 +143,36 @@ public class OrderBook {
             sellOrders.computeIfAbsent(order.getPrice(), k -> new ConcurrentLinkedQueue<>()).add(order);
             log.info("Added SELL order {} to book at price {}", order.getOrderId(), order.getPrice());
         }
+    }
+
+    private Order cancelFromBook(ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> bookSide, String orderId) {
+        // Production systems maintain a separate HashMap<orderId, Order> for O(1) cancel lookup - omitted here for simplicity.
+        for (Double priceLevel : new ArrayList<>(bookSide.keySet())) {
+            ConcurrentLinkedQueue<Order> queue = bookSide.get(priceLevel);
+            if (queue == null) {
+                continue;
+            }
+
+            for (Order order : queue) {
+                if (!orderId.equals(order.getOrderId())) {
+                    continue;
+                }
+
+                boolean removed = queue.remove(order);
+                if (!removed) {
+                    return null;
+                }
+
+                if (queue.isEmpty()) {
+                    bookSide.remove(priceLevel);
+                }
+
+                order.setStatus(OrderStatus.CANCELLED);
+                order.setUpdatedAt(Instant.now());
+                return order;
+            }
+        }
+        return null;
     }
 
     private void applyIncomingOrderState(Order incomingOrder, double remainingQty, List<TradeExecution> executions) {
