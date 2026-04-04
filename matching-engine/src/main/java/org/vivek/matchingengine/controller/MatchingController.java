@@ -10,9 +10,10 @@ import org.vivek.commonmodule.model.TradeExecution;
 import org.vivek.matchingengine.config.KafkaProducerConfig;
 import org.vivek.matchingengine.orderbook.OrderBook;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -29,14 +30,21 @@ public class MatchingController {
                 order.getOrderId(), order.getSymbol(), order.getSide(),
                 order.getQuantity(), order.getPrice());
 
-        Optional<TradeExecution> execution = orderBook.match(order);
+        double originalQty = order.getQuantity();
+        List<TradeExecution> executions = orderBook.match(order);
+        double totalFilled = executions.stream()
+                .mapToDouble(TradeExecution::getQuantity)
+                .sum();
+        double remainingQty = Math.max(0.0d, originalQty - totalFilled);
 
         Map<String, Object> response = new HashMap<>();
+        response.put("matched", !executions.isEmpty());
+        response.put("fillCount", executions.size());
+        response.put("totalFilled", totalFilled);
+        response.put("remainingQty", remainingQty);
+        response.put("executions", new ArrayList<>(executions));
 
-        if (execution.isPresent()) {
-            TradeExecution trade = execution.get();
-
-            // Publish to Kafka using orderId as key for ordering guarantees
+        for (TradeExecution trade : executions) {
             tradeKafkaTemplate.send(
                     KafkaProducerConfig.TOPIC_TRADE_EXECUTED,
                     order.getOrderId(),
@@ -51,14 +59,15 @@ public class MatchingController {
                             result.getRecordMetadata().offset());
                 }
             });
+            log.info("Trade matched: {} @ price={} qty={}",
+                    trade.getTradeId(), trade.getExecutedPrice(), trade.getQuantity());
+        }
 
-            response.put("matched", true);
-            response.put("tradeId", trade.getTradeId());
-            log.info("Trade matched: {} @ price={}", trade.getTradeId(), trade.getExecutedPrice());
-        } else {
-            response.put("matched", false);
-            response.put("tradeId", null);
+        if (executions.isEmpty()) {
             log.info("No match found for order {}; added to order book", order.getOrderId());
+        } else {
+            log.info("Order {} generated {} fills, totalFilled={}, remainingQty={}",
+                    order.getOrderId(), executions.size(), totalFilled, remainingQty);
         }
 
         return ResponseEntity.ok(response);
