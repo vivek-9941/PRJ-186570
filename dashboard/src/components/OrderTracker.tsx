@@ -3,7 +3,8 @@ import { OrderDetails, TrackerStep } from "../types";
 import { formatTimestamp, parseError } from "../utils";
 
 const ORDER_ENDPOINT = "/api/orders/api/v1/orders";
-const TERMINAL_STATUSES = new Set(["EXECUTED", "REJECTED", "FAILED"]);
+const TERMINAL_STATUSES = new Set(["EXECUTED", "FULLY_FILLED", "REJECTED", "FAILED", "CANCELLED"]);
+const CANCELLABLE_STATUSES = new Set(["PENDING", "PARTIALLY_FILLED"]);
 
 const statusPaths: Record<string, string[]> = {
   PENDING: ["PENDING"],
@@ -11,6 +12,9 @@ const statusPaths: Record<string, string[]> = {
   APPROVED: ["PENDING", "VALIDATING", "APPROVED"],
   REJECTED: ["PENDING", "VALIDATING", "REJECTED"],
   ROUTED: ["PENDING", "VALIDATING", "APPROVED", "ROUTED"],
+  PARTIALLY_FILLED: ["PENDING", "VALIDATING", "APPROVED", "ROUTED", "PARTIALLY_FILLED"],
+  FULLY_FILLED: ["PENDING", "VALIDATING", "APPROVED", "ROUTED", "EXECUTED", "FULLY_FILLED"],
+  CANCELLED: ["PENDING", "CANCELLED"],
   EXECUTED: ["PENDING", "VALIDATING", "APPROVED", "ROUTED", "EXECUTED"],
   FAILED: ["PENDING", "VALIDATING", "FAILED"]
 };
@@ -42,12 +46,20 @@ function statusIndex(status: string, timeline: Record<string, string>): number {
     if (timeline.VALIDATING) return 1;
     return 0;
   }
+  if (status === "CANCELLED") {
+    if (timeline.PARTIALLY_FILLED || timeline.ROUTED) return 3;
+    if (timeline.APPROVED || timeline.REJECTED) return 2;
+    if (timeline.VALIDATING) return 1;
+    return 0;
+  }
   switch (status) {
     case "PENDING": return 0;
     case "VALIDATING": return 1;
     case "APPROVED":
     case "REJECTED": return 2;
     case "ROUTED": return 3;
+    case "PARTIALLY_FILLED": return 3;
+    case "FULLY_FILLED":
     case "EXECUTED": return 4;
     default: return 0;
   }
@@ -67,6 +79,11 @@ function buildTrackerSteps(currentStatus: string, timeline: Record<string, strin
     let color: TrackerStep["color"] = "gray";
     if (activeStatus === "EXECUTED") {
       color = "green";
+    } else if (activeStatus === "FULLY_FILLED") {
+      color = "green";
+    } else if (activeStatus === "CANCELLED") {
+      if (index < currentStep) color = "green";
+      if (index === currentStep) color = "red";
     } else if (activeStatus === "REJECTED") {
       if (index < 2) color = "green";
       if (index === 2) color = "red";
@@ -82,7 +99,10 @@ function buildTrackerSteps(currentStatus: string, timeline: Record<string, strin
     let label = defaultLabel;
 
     if (key === "DECISION") {
-      if (activeStatus === "REJECTED" || timeline.REJECTED) {
+      if (activeStatus === "CANCELLED" && index === currentStep) {
+        label = "CANCELLED";
+        timestamp = timeline.CANCELLED;
+      } else if (activeStatus === "REJECTED" || timeline.REJECTED) {
         label = "REJECTED";
         timestamp = timeline.REJECTED;
       } else if (activeStatus === "FAILED" && currentStep === 2 && timeline.FAILED) {
@@ -96,13 +116,36 @@ function buildTrackerSteps(currentStatus: string, timeline: Record<string, strin
         timestamp = timeline.FAILED;
       }
     } else if (key === "PENDING") {
-      timestamp = timeline.PENDING;
+      if (activeStatus === "CANCELLED" && currentStep === 0) {
+        label = "CANCELLED";
+        timestamp = timeline.CANCELLED;
+      } else {
+        timestamp = timeline.PENDING;
+      }
     } else if (key === "VALIDATING") {
-      timestamp = timeline.VALIDATING;
+      if (activeStatus === "CANCELLED" && currentStep === 1) {
+        label = "CANCELLED";
+        timestamp = timeline.CANCELLED;
+      } else {
+        timestamp = timeline.VALIDATING;
+      }
     } else if (key === "ROUTED") {
-      timestamp = timeline.ROUTED;
+      if (activeStatus === "PARTIALLY_FILLED") {
+        label = "PARTIALLY FILLED";
+        timestamp = timeline.PARTIALLY_FILLED ?? timeline.ROUTED;
+      } else if (activeStatus === "CANCELLED" && currentStep === 3) {
+        label = "CANCELLED";
+        timestamp = timeline.CANCELLED;
+      } else {
+        timestamp = timeline.ROUTED;
+      }
     } else if (key === "EXECUTED") {
-      timestamp = timeline.EXECUTED;
+      if (activeStatus === "FULLY_FILLED") {
+        label = "FULLY FILLED";
+        timestamp = timeline.FULLY_FILLED ?? timeline.EXECUTED;
+      } else {
+        timestamp = timeline.EXECUTED;
+      }
     }
 
     return { key, label, timestamp, color };
@@ -115,6 +158,9 @@ export default function OrderTracker() {
   const [trackSequence, setTrackSequence] = useState(0);
   const [trackerLoading, setTrackerLoading] = useState(false);
   const [trackerError, setTrackerError] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelMessage, setCancelMessage] = useState("");
+  const [shouldPoll, setShouldPoll] = useState(false);
   const [trackedOrder, setTrackedOrder] = useState<OrderDetails | null>(null);
   const [statusTimeline, setStatusTimeline] = useState<Record<string, string>>({});
 
@@ -124,7 +170,7 @@ export default function OrderTracker() {
   );
 
   useEffect(() => {
-    if (!activeOrderId) return;
+    if (!activeOrderId || !shouldPoll) return;
     let alive = true;
     let intervalId = 0;
 
@@ -149,7 +195,10 @@ export default function OrderTracker() {
           if (!next[normalizedStatus]) next[normalizedStatus] = observedAt;
           return next;
         });
-        if (TERMINAL_STATUSES.has(normalizedStatus)) window.clearInterval(intervalId);
+        if (TERMINAL_STATUSES.has(normalizedStatus)) {
+          setShouldPoll(false);
+          window.clearInterval(intervalId);
+        }
       } catch (error) {
         if (!alive) return;
         setTrackerError(error instanceof Error ? error.message : "Unable to fetch order status.");
@@ -162,21 +211,46 @@ export default function OrderTracker() {
     poll();
     intervalId = window.setInterval(poll, 1000);
     return () => { alive = false; window.clearInterval(intervalId); };
-  }, [activeOrderId, trackSequence]);
+  }, [activeOrderId, shouldPoll, trackSequence]);
 
   function startTracking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedOrderId = trackInput.trim();
     if (!trimmedOrderId) return;
     setTrackerError("");
+    setCancelMessage("");
+    setCancelLoading(false);
     setTrackedOrder(null);
     setStatusTimeline({});
     setActiveOrderId(trimmedOrderId);
+    setShouldPoll(true);
     setTrackSequence((previous) => previous + 1);
   }
 
   const trackingState = trackedOrder?.status?.toUpperCase() ?? "";
-  const trackingLive = activeOrderId && (!trackingState || !TERMINAL_STATUSES.has(trackingState.toUpperCase()));
+  const canCancel = trackedOrder ? CANCELLABLE_STATUSES.has(trackedOrder.status.toUpperCase()) : false;
+  const trackingLive = Boolean(activeOrderId) && shouldPoll && (!trackingState || !TERMINAL_STATUSES.has(trackingState.toUpperCase()));
+
+  async function cancelOrder() {
+    if (!trackedOrder) return;
+    setCancelLoading(true);
+    setTrackerError("");
+    setCancelMessage("");
+
+    try {
+      const response = await fetch(`${ORDER_ENDPOINT}/${trackedOrder.orderId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await parseError(response));
+      const cancelledAt = new Date().toISOString();
+      setTrackedOrder({ ...trackedOrder, status: "CANCELLED", updatedAt: cancelledAt });
+      setStatusTimeline((previous) => ({ ...previous, CANCELLED: cancelledAt }));
+      setShouldPoll(false);
+      setCancelMessage("Order cancelled");
+    } catch (error) {
+      setTrackerError(error instanceof Error ? error.message : "Unable to cancel order.");
+    } finally {
+      setCancelLoading(false);
+    }
+  }
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm">
@@ -200,6 +274,7 @@ export default function OrderTracker() {
 
       {trackerLoading && <p className="mt-4 text-sm font-medium text-slate-500">Loading latest status...</p>}
       {trackerError && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{trackerError}</p>}
+      {cancelMessage && <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{cancelMessage}</p>}
       {activeOrderId && !trackerError && (
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <p><span className="font-semibold">Tracking:</span> {activeOrderId}</p>
@@ -207,6 +282,17 @@ export default function OrderTracker() {
             {trackingLive ? "Polling every 1 second" : "Polling stopped (terminal status)."}
           </p>
         </div>
+      )}
+
+      {canCancel && (
+        <button
+          type="button"
+          onClick={cancelOrder}
+          disabled={cancelLoading}
+          className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+        >
+          {cancelLoading ? "Cancelling..." : "Cancel order"}
+        </button>
       )}
 
       <ol className="mt-6 border-l-2 border-slate-200 pl-5">

@@ -20,6 +20,9 @@ export async function parseError(response: Response): Promise<string> {
   const fallbackResponse = response.clone();
   try {
     const body = await response.json();
+    if (typeof body?.error === "string" && body.error.trim()) {
+      return body.error;
+    }
     if (typeof body?.message === "string" && body.message.trim()) {
       return body.message;
     }
