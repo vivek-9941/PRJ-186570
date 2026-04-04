@@ -110,6 +110,8 @@ public class OrderBook {
                 .tradeId("TRD-" + UUID.randomUUID())
                 .buyOrderId(buyOrder.getOrderId())
                 .sellOrderId(sellOrder.getOrderId())
+                .buyerId(buyOrder.getUserId())
+                .sellerId(sellOrder.getUserId())
                 .symbol(buyOrder.getSymbol())
                 .quantity(Math.min(buyOrder.getQuantity(), sellOrder.getQuantity()))
                 .executedPrice(executedPrice)

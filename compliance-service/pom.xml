@@ -64,9 +64,16 @@
                 <artifactId>protobuf-maven-plugin</artifactId>
                 <configuration>
                     <protoSourceRoot>${project.basedir}/../proto</protoSourceRoot>
-                    <outputDirectory>${project.build.directory}/generated-sources/protobuf</outputDirectory>
                     <clearOutputDirectory>false</clearOutputDirectory>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>compile-custom</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
