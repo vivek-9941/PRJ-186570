@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Segoe UI Variable", "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #f1f5f9, #dbeafe 45%, #e2e8f0 100%);
+}
