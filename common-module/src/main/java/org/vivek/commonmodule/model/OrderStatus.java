@@ -6,6 +6,8 @@ public enum OrderStatus {
     APPROVED,
     REJECTED,
     ROUTED,
+    PARTIALLY_FILLED,
+    FULLY_FILLED,
     EXECUTED,
     FAILED
 }

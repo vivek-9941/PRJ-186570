@@ -21,4 +21,18 @@ public class Order {
     private OrderStatus status;
     private Instant createdAt;
     private Instant updatedAt;
+
+    public Order withQuantity(double quantity) {
+        return Order.builder()
+                .orderId(orderId)
+                .userId(userId)
+                .symbol(symbol)
+                .side(side)
+                .quantity(quantity)
+                .price(price)
+                .status(status)
+                .createdAt(createdAt)
+                .updatedAt(updatedAt)
+                .build();
+    }
 }
