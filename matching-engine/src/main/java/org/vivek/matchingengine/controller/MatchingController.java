@@ -5,11 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.vivek.commonmodule.model.CancellationEvent;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.TradeExecution;
 import org.vivek.matchingengine.config.KafkaProducerConfig;
 import org.vivek.matchingengine.orderbook.OrderBook;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +25,7 @@ public class MatchingController {
 
     private final OrderBook orderBook;
     private final KafkaTemplate<String, TradeExecution> tradeKafkaTemplate;
+    private final KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate;
 
     @PostMapping("/match")
     public ResponseEntity<Map<String, Object>> match(@RequestBody Order order) {
@@ -71,5 +74,37 @@ public class MatchingController {
         }
 
         return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/orders/{orderId}")
+    public ResponseEntity<Map<String, Object>> cancel(@PathVariable String orderId) {
+        Order cancelledOrder = orderBook.cancelOrder(orderId);
+        boolean cancelled = cancelledOrder != null;
+
+        if (cancelledOrder != null) {
+            CancellationEvent event = CancellationEvent.builder()
+                    .orderId(cancelledOrder.getOrderId())
+                    .userId(cancelledOrder.getUserId())
+                    .symbol(cancelledOrder.getSymbol())
+                    .cancelledAt(Instant.now())
+                    .build();
+
+            cancellationKafkaTemplate.send(
+                    KafkaProducerConfig.TOPIC_ORDER_CANCELLED,
+                    cancelledOrder.getOrderId(),
+                    event
+            ).whenComplete((result, ex) -> {
+                if (ex != null) {
+                    log.error("Failed to publish cancellation for order {}: {}", orderId, ex.getMessage());
+                } else {
+                    log.info("Cancellation for order {} published to Kafka partition {} offset {}",
+                            orderId,
+                            result.getRecordMetadata().partition(),
+                            result.getRecordMetadata().offset());
+                }
+            });
+        }
+
+        return ResponseEntity.ok(Map.of("cancelled", cancelled));
     }
 }
