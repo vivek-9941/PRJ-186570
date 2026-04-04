@@ -8,6 +8,7 @@ import org.vivek.commonmodule.model.DAGResult;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderStatus;
 import org.vivek.order.client.MatchingEngineClient;
+import org.vivek.order.client.MatchingEngineResponse;
 import org.vivek.order.repository.OrderRepository;
 
 import java.time.Instant;
@@ -18,6 +19,8 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 @Slf4j
 public class OrderService {
+
+    private static final double EPSILON = 1e-9;
 
     private final OrderRepository orderRepository;
     private final DAGExecutor dagExecutor;
@@ -49,13 +52,16 @@ public class OrderService {
                     updateStatus(order, OrderStatus.APPROVED);
                     orderRepository.save(order);
 
-                    boolean routed = matchingEngineClient.route(order);
-                    if (!routed) {
+                    updateStatus(order, OrderStatus.ROUTED);
+                    orderRepository.save(order);
+
+                    MatchingEngineResponse matchingResponse = matchingEngineClient.route(order);
+                    if (matchingResponse == null) {
                         // Handle connection errors gracefully (log + mark order FAILED)
                         updateStatus(order, OrderStatus.FAILED);
                         orderRepository.save(order);
                     } else {
-                        updateStatus(order, OrderStatus.ROUTED);
+                        applyMatchingOutcome(order, matchingResponse);
                         orderRepository.save(order);
                     }
                 } else {
@@ -81,5 +87,23 @@ public class OrderService {
                 oldStatus != null ? oldStatus : "NEW", 
                 newStatus, 
                 order.getUpdatedAt());
+    }
+
+    private void applyMatchingOutcome(Order order, MatchingEngineResponse matchingResponse) {
+        double remainingQty = matchingResponse.getRemainingQty();
+        double totalFilled = matchingResponse.getTotalFilled();
+        order.setQuantity(remainingQty <= EPSILON ? 0.0d : remainingQty);
+
+        if (remainingQty <= EPSILON && totalFilled > EPSILON) {
+            updateStatus(order, OrderStatus.EXECUTED);
+            return;
+        }
+
+        if (totalFilled > EPSILON) {
+            updateStatus(order, OrderStatus.PARTIALLY_FILLED);
+            return;
+        }
+
+        updateStatus(order, OrderStatus.PENDING);
     }
 }
