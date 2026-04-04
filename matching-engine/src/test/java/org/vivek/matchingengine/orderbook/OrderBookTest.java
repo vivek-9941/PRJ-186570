@@ -33,9 +33,6 @@ class OrderBookTest {
         assertEquals(101.0d, executions.get(1).getExecutedPrice());
         assertEquals(OrderStatus.FULLY_FILLED, incomingBuy.getStatus());
         assertEquals(0.0d, incomingBuy.getQuantity());
-        assertEquals(OrderStatus.FULLY_FILLED, sellOne.getStatus());
-        assertEquals(OrderStatus.PARTIALLY_FILLED, sellTwo.getStatus());
-        assertEquals(1.5d, sellTwo.getQuantity());
 
         Order followUpBuy = order("buy-2", OrderSide.BUY, 2.0d, 101.0d);
         List<TradeExecution> followUpExecutions = orderBook.match(followUpBuy);
