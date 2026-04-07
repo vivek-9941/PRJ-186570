@@ -1,0 +1,25 @@
+server:
+  port: 8090
+
+grpc:
+  server:
+    port: 9091
+
+spring:
+  application:
+    name: risk-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: risk-group
+      auto-offset-reset: earliest
+
+logging:
+  level:
+    org.vivek.riskservice: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

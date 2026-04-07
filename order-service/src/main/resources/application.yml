@@ -1,0 +1,56 @@
+server:
+  port: 8080
+
+grpc:
+  client:
+    risk-service:
+      address: static://${RISK_HOST:localhost}:9091
+      negotiation-type: plaintext
+    margin-service:
+      address: static://${MARGIN_HOST:localhost}:9092
+      negotiation-type: plaintext
+    compliance-service:
+      address: static://${COMPLIANCE_HOST:localhost}:9093
+      negotiation-type: plaintext
+
+spring:
+  application:
+    name: order-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      riskService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedCallsInHalfOpenState: 3
+      marginService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+      complianceService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+
+matching-engine:
+  url: http://${MATCHING_ENGINE_HOST:localhost}:8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss} [%X{correlationId}] %-5level %logger{36} - %msg%n"
