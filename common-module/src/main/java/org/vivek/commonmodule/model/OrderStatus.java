@@ -9,6 +9,7 @@ public enum OrderStatus {
     PARTIALLY_FILLED,
     FULLY_FILLED,
     CANCELLED,
+    EXPIRED,
     EXECUTED,
     FAILED
 }

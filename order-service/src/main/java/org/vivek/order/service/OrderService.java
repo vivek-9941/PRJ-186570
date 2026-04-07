@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.vivek.commonmodule.model.DAGResult;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderStatus;
+import org.vivek.commonmodule.model.OrderType;
 import org.vivek.order.client.MatchingEngineClient;
 import org.vivek.order.client.MatchingEngineResponse;
 import org.vivek.order.repository.OrderRepository;
@@ -93,6 +94,15 @@ public class OrderService {
         double remainingQty = matchingResponse.getRemainingQty();
         double totalFilled = matchingResponse.getTotalFilled();
         order.setQuantity(remainingQty <= EPSILON ? 0.0d : remainingQty);
+
+        if (order.getOrderType() == OrderType.IOC && remainingQty > EPSILON) {
+            if (totalFilled > EPSILON) {
+                updateStatus(order, OrderStatus.PARTIALLY_FILLED);
+                orderRepository.save(order);
+            }
+            updateStatus(order, OrderStatus.CANCELLED);
+            return;
+        }
 
         if (remainingQty <= EPSILON && totalFilled > EPSILON) {
             updateStatus(order, OrderStatus.EXECUTED);
