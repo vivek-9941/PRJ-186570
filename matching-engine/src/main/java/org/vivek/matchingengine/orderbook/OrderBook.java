@@ -1,11 +1,16 @@
 package org.vivek.matchingengine.orderbook;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import org.vivek.commonmodule.model.CancellationEvent;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderSide;
 import org.vivek.commonmodule.model.OrderStatus;
+import org.vivek.commonmodule.model.OrderType;
 import org.vivek.commonmodule.model.TradeExecution;
+import org.vivek.matchingengine.config.KafkaProducerConfig;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,6 +33,9 @@ public class OrderBook {
     // Ascending: lowest ask first
     private final ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> sellOrders =
             new ConcurrentSkipListMap<>();
+
+    @Autowired(required = false)
+    private KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate;
 
     public synchronized List<TradeExecution> match(Order incomingOrder) {
         double remainingQty = incomingOrder.getQuantity();
@@ -178,8 +186,18 @@ public class OrderBook {
     private void applyIncomingOrderState(Order incomingOrder, double remainingQty, List<TradeExecution> executions) {
         Instant updatedAt = Instant.now();
         boolean matched = !executions.isEmpty();
+        OrderType orderType = incomingOrder.getOrderType() != null ? incomingOrder.getOrderType() : OrderType.LIMIT;
 
         if (remainingQty > EPSILON) {
+            if (orderType == OrderType.IOC) {
+                incomingOrder.setQuantity(remainingQty);
+                incomingOrder.setStatus(matched ? OrderStatus.PARTIALLY_FILLED : OrderStatus.CANCELLED);
+                incomingOrder.setUpdatedAt(updatedAt);
+                publishCancellationEvent(incomingOrder, updatedAt);
+                log.info("IOC order {} expired: {} unfilled", incomingOrder.getOrderId(), remainingQty);
+                return;
+            }
+
             Order remainder = incomingOrder.withQuantity(remainingQty);
             remainder.setStatus(matched ? OrderStatus.PARTIALLY_FILLED : OrderStatus.PENDING);
             remainder.setUpdatedAt(updatedAt);
@@ -194,6 +212,29 @@ public class OrderBook {
         incomingOrder.setQuantity(0.0d);
         incomingOrder.setStatus(matched ? OrderStatus.FULLY_FILLED : incomingOrder.getStatus());
         incomingOrder.setUpdatedAt(updatedAt);
+    }
+
+    private void publishCancellationEvent(Order order, Instant cancelledAt) {
+        if (cancellationKafkaTemplate == null) {
+            return;
+        }
+
+        CancellationEvent event = CancellationEvent.builder()
+                .orderId(order.getOrderId())
+                .userId(order.getUserId())
+                .symbol(order.getSymbol())
+                .cancelledAt(cancelledAt)
+                .build();
+
+        cancellationKafkaTemplate.send(
+                KafkaProducerConfig.TOPIC_ORDER_CANCELLED,
+                order.getOrderId(),
+                event
+        ).whenComplete((result, ex) -> {
+            if (ex != null) {
+                log.error("Failed to publish IOC cancellation for order {}: {}", order.getOrderId(), ex.getMessage());
+            }
+        });
     }
 
     private void reduceRestingOrder(Double priceLevel, ConcurrentLinkedQueue<Order> queue, Order restingOrder,
