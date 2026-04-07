@@ -1,11 +1,15 @@
-import { useState, FormEvent } from "react";
-import { SymbolOption, Side, PlaceOrderResponse } from "../types";
+import { useEffect, useState, FormEvent } from "react";
+import { SymbolOption, Side, PlaceOrderResponse, MarketDataBySymbol } from "../types";
 import { parseError } from "../utils";
 
 const ORDER_ENDPOINT = "/api/orders/api/v1/orders";
 const SYMBOLS = ["INFY", "TCS", "RELIANCE", "HDFC"] as const;
 
-export default function OrderPlacer() {
+interface OrderPlacerProps {
+  latestTicks: MarketDataBySymbol;
+}
+
+export default function OrderPlacer({ latestTicks }: OrderPlacerProps) {
   const [userId, setUserId] = useState("");
   const [symbol, setSymbol] = useState<SymbolOption>("INFY");
   const [side, setSide] = useState<Side>("BUY");
@@ -14,6 +18,14 @@ export default function OrderPlacer() {
   const [placeOrderLoading, setPlaceOrderLoading] = useState(false);
   const [placeOrderError, setPlaceOrderError] = useState("");
   const [placeOrderResult, setPlaceOrderResult] = useState<PlaceOrderResponse | null>(null);
+
+  useEffect(() => {
+    const currentTick = latestTicks[symbol];
+    if (!currentTick) {
+      return;
+    }
+    setPrice(currentTick.price.toFixed(2));
+  }, [symbol, latestTicks]);
 
   async function handlePlaceOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
