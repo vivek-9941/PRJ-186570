@@ -12,9 +12,11 @@ import java.util.Map;
 public class AnalyticsController {
 
     private final AnalyticsConsumer analyticsConsumer;
+    private final DltMonitor dltMonitor;
 
-    public AnalyticsController(AnalyticsConsumer analyticsConsumer) {
+    public AnalyticsController(AnalyticsConsumer analyticsConsumer, DltMonitor dltMonitor) {
         this.analyticsConsumer = analyticsConsumer;
+        this.dltMonitor = dltMonitor;
     }
 
     @GetMapping("/symbols")
@@ -25,5 +27,10 @@ public class AnalyticsController {
     @GetMapping("/symbols/{symbol}")
     public SymbolStats getStats(@PathVariable String symbol) {
         return analyticsConsumer.getStats(symbol);
+    }
+
+    @GetMapping("/dlq")
+    public Map<String, Map<String, Object>> getDlqStatus() {
+        return dltMonitor.snapshot();
     }
 }
