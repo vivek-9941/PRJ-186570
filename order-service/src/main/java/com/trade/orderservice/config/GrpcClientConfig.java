@@ -12,24 +12,19 @@ import org.vivek.trade.risk.grpc.RiskServiceGrpc;
 @Configuration
 public class GrpcClientConfig {
 
-    @Value("${grpc.risk.host:localhost}")
-    private String riskHost;
-    @Value("${grpc.risk.port:9091}")
-    private int riskPort;
+    @Value("${grpc.client.risk-service.address:static://localhost:9091}")
+    private String riskAddress;
 
-    @Value("${grpc.margin.host:localhost}")
-    private String marginHost;
-    @Value("${grpc.margin.port:9092}")
-    private int marginPort;
+    @Value("${grpc.client.margin-service.address:static://localhost:9092}")
+    private String marginAddress;
 
-    @Value("${grpc.compliance.host:localhost}")
-    private String complianceHost;
-    @Value("${grpc.compliance.port:9093}")
-    private int compliancePort;
+    @Value("${grpc.client.compliance-service.address:static://localhost:9093}")
+    private String complianceAddress;
 
     @Bean
     public ManagedChannel riskChannel() {
-        return ManagedChannelBuilder.forAddress(riskHost, riskPort)
+        HostPort target = parseAddress(riskAddress);
+        return ManagedChannelBuilder.forAddress(target.host(), target.port())
                 .usePlaintext()
                 .build();
     }
@@ -41,7 +36,8 @@ public class GrpcClientConfig {
 
     @Bean
     public ManagedChannel marginChannel() {
-        return ManagedChannelBuilder.forAddress(marginHost, marginPort)
+        HostPort target = parseAddress(marginAddress);
+        return ManagedChannelBuilder.forAddress(target.host(), target.port())
                 .usePlaintext()
                 .build();
     }
@@ -53,7 +49,8 @@ public class GrpcClientConfig {
 
     @Bean
     public ManagedChannel complianceChannel() {
-        return ManagedChannelBuilder.forAddress(complianceHost, compliancePort)
+        HostPort target = parseAddress(complianceAddress);
+        return ManagedChannelBuilder.forAddress(target.host(), target.port())
                 .usePlaintext()
                 .build();
     }
@@ -62,4 +59,22 @@ public class GrpcClientConfig {
     public ComplianceServiceGrpc.ComplianceServiceFutureStub complianceServiceFutureStub(ManagedChannel complianceChannel) {
         return ComplianceServiceGrpc.newFutureStub(complianceChannel);
     }
+
+    private HostPort parseAddress(String address) {
+        String normalized = address == null ? "" : address.trim();
+        if (normalized.startsWith("static://")) {
+            normalized = normalized.substring("static://".length());
+        }
+
+        int separator = normalized.lastIndexOf(':');
+        if (separator <= 0 || separator == normalized.length() - 1) {
+            throw new IllegalArgumentException("Invalid gRPC address: " + address);
+        }
+
+        String host = normalized.substring(0, separator);
+        int port = Integer.parseInt(normalized.substring(separator + 1));
+        return new HostPort(host, port);
+    }
+
+    private record HostPort(String host, int port) {}
 }
