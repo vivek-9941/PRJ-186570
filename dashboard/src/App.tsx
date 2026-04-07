@@ -1,8 +1,13 @@
 import OrderPlacer from "./components/OrderPlacer";
 import OrderTracker from "./components/OrderTracker";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
+import CircuitBreakerPanel from "./components/CircuitBreakerPanel";
+import MarketDataBar from "./components/MarketDataBar";
+import useMarketDataFeed from "./hooks/useMarketDataFeed";
 
 function App() {
+  const { latestTicks, history, connected, symbols } = useMarketDataFeed();
+
   return (
     <div className="min-h-screen text-slate-900">
       <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur">
@@ -18,7 +23,9 @@ function App() {
       </header>
 
       <main className="mx-auto grid max-w-[1800px] grid-cols-1 gap-5 p-6 xl:grid-cols-3">
-        <OrderPlacer />
+        <MarketDataBar latestTicks={latestTicks} history={history} symbols={symbols} connected={connected} />
+        <CircuitBreakerPanel />
+        <OrderPlacer latestTicks={latestTicks} />
         <OrderTracker />
         <AnalyticsDashboard />
       </main>
