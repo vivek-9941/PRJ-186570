@@ -27,6 +27,8 @@
 		<module>ledger-service</module>
 		<module>notification-service</module>
 		<module>analytics-service</module>
+		<module>market-data-service</module>
+		<module>integration-tests</module>
 	</modules>
 
 	<properties>
