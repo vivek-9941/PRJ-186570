@@ -10,12 +10,14 @@
         <processorPath useClasspath="false">
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.34/lombok-1.18.34.jar" />
         </processorPath>
+        <module name="market-data-service" />
         <module name="matching-engine" />
         <module name="margin-service" />
         <module name="common-module" />
         <module name="ledger-service" />
         <module name="analytics-service" />
         <module name="compliance-service" />
+        <module name="integration-tests" />
         <module name="notification-service" />
         <module name="risk-service" />
         <module name="order" />
@@ -27,8 +29,10 @@
       <module name="analytics-service" options="-parameters" />
       <module name="common-module" options="-parameters" />
       <module name="compliance-service" options="-parameters" />
+      <module name="integration-tests" options="-parameters" />
       <module name="ledger-service" options="-parameters" />
       <module name="margin-service" options="-parameters" />
+      <module name="market-data-service" options="-parameters" />
       <module name="matching-engine" options="-parameters" />
       <module name="notification-service" options="-parameters" />
       <module name="order" options="-parameters" />
