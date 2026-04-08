@@ -1,0 +1,25 @@
+server:
+  port: 8092
+
+grpc:
+  server:
+    port: 9092
+
+spring:
+  application:
+    name: margin-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: margin-group
+      auto-offset-reset: earliest
+
+logging:
+  level:
+    org.vivek.marginservice: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

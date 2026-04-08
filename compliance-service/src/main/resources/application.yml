@@ -1,0 +1,25 @@
+server:
+  port: 8093
+
+grpc:
+  server:
+    port: 9093
+
+spring:
+  application:
+    name: compliance-service
+
+compliance:
+  bypass-market-hours: true
+  price-band-percent: 0.20
+  duplicate-window-ms: 1000
+
+logging:
+  level:
+    org.vivek.complianceservice: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

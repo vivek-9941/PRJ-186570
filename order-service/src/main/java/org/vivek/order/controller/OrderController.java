@@ -7,12 +7,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderStatus;
+import org.vivek.commonmodule.model.OrderType;
 import org.vivek.order.client.MatchingEngineClient;
 import org.vivek.order.dto.PlaceOrderRequest;
 import org.vivek.order.repository.OrderRepository;
 import org.vivek.order.service.OrderService;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -28,11 +31,16 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> placeOrder(@Valid @RequestBody PlaceOrderRequest request) {
+        OrderType orderType = request.getOrderType() != null ? request.getOrderType() : OrderType.LIMIT;
+        LocalDateTime expiryTime = resolveExpiryTime(orderType, request.getExpiryTime());
+
         Order order = Order.builder()
                 .orderId(orderService.generateOrderId())
                 .userId(request.getUserId())
                 .symbol(request.getSymbol())
                 .side(request.getSide())
+                .orderType(orderType)
+                .expiryTime(expiryTime)
                 .quantity(request.getQuantity())
                 .price(request.getPrice())
                 .status(OrderStatus.PENDING)
@@ -89,5 +97,17 @@ public class OrderController {
                 "status", order.getStatus().name(),
                 "message", "Order cancelled"
         ));
+    }
+
+    private LocalDateTime resolveExpiryTime(OrderType orderType, LocalDateTime requestedExpiryTime) {
+        if (orderType != OrderType.GTD) {
+            return requestedExpiryTime;
+        }
+
+        if (requestedExpiryTime != null) {
+            return requestedExpiryTime;
+        }
+
+        return LocalDate.now().atTime(17, 0);
     }
 }

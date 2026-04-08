@@ -4,8 +4,10 @@
     <file url="file://$PROJECT_DIR$/analytics-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/common-module/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/compliance-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/integration-tests/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/ledger-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/margin-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/market-data-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/matching-engine/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/notification-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/order-service/src/main/java" charset="UTF-8" />

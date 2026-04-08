@@ -22,8 +22,8 @@ public class LedgerConsumer {
 
     @KafkaListener(topics = "${kafka.consumer.topic}", groupId = "ledger-group")
     public void consumeTradeExecution(TradeExecution trade) {
-        if (!processedTradeIds.add(trade.getTradeId())) {
-            log.info("Trade {} already processed, skipping", trade.getTradeId());
+            if (trade.getTradeId() != null && processedTradeIds.contains(trade.getTradeId())) {
+            log.warn("Trade {} already processed, skipping duplicate event", trade.getTradeId());
             return;
         }
 
@@ -40,6 +40,9 @@ public class LedgerConsumer {
         }
 
         log.info("Ledger updated for trade {}", trade.getTradeId());
+        if (trade.getTradeId() != null) {
+            processedTradeIds.add(trade.getTradeId());
+        }
     }
 
     @KafkaListener(topics = "${kafka.consumer.cancellation-topic}", groupId = "ledger-group")

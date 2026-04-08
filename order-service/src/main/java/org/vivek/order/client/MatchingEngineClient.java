@@ -1,6 +1,7 @@
 package org.vivek.order.client;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -15,11 +16,16 @@ import java.util.Map;
 public class MatchingEngineClient {
 
     private final RestTemplate restTemplate;
-    private final String matchUrl = "http://matching-engine:8081/api/v1/match";
-    private final String cancelUrl = "http://matching-engine:8081/api/v1/orders";
+    private final String matchUrl;
+    private final String cancelUrl;
 
-    public MatchingEngineClient() {
+    public MatchingEngineClient(@Value("${matching-engine.url:http://localhost:8081}") String matchingEngineBaseUrl) {
         this.restTemplate = new RestTemplate();
+        String baseUrl = matchingEngineBaseUrl.endsWith("/")
+                ? matchingEngineBaseUrl.substring(0, matchingEngineBaseUrl.length() - 1)
+                : matchingEngineBaseUrl;
+        this.matchUrl = baseUrl + "/api/v1/match";
+        this.cancelUrl = baseUrl + "/api/v1/orders";
     }
 
     public MatchingEngineResponse route(Order order) {

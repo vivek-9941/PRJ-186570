@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -18,6 +19,9 @@ public class Order {
     private OrderSide side;
     private double quantity;
     private double price;
+    @Builder.Default
+    private OrderType orderType = OrderType.LIMIT;
+    private LocalDateTime expiryTime;
     private OrderStatus status;
     private Instant createdAt;
     private Instant updatedAt;
@@ -30,6 +34,8 @@ public class Order {
                 .side(side)
                 .quantity(quantity)
                 .price(price)
+                .orderType(orderType)
+                .expiryTime(expiryTime)
                 .status(status)
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)

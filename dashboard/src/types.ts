@@ -30,9 +30,28 @@ export interface AnalyticsRow extends SymbolStats {
   symbol: string;
 }
 
+export interface CircuitBreakerDetails {
+  state: string;
+  failureRate: string;
+  calls?: number;
+}
+
+export type CircuitBreakerHealthResponse = Record<string, CircuitBreakerDetails>;
+
 export interface TrackerStep {
   key: string;
   label: string;
   timestamp?: string;
   color: "green" | "amber" | "red" | "gray";
 }
+
+export interface PriceTick {
+  symbol: SymbolOption;
+  price: number;
+  change: number;
+  changePercent: number;
+  timestamp: string;
+  volume: number;
+}
+
+export type MarketDataBySymbol = Record<SymbolOption, PriceTick>;

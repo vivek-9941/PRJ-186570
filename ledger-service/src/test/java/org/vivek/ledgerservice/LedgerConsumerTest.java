@@ -44,4 +44,26 @@ class LedgerConsumerTest {
         assertEquals(-200.0d, consumer.getBalance("buyer").get("balance"));
         assertEquals(200.0d, consumer.getBalance("seller").get("balance"));
     }
+
+    @Test
+    void duplicateTradeIsIgnored() {
+        LedgerConsumer consumer = new LedgerConsumer();
+        TradeExecution trade = TradeExecution.builder()
+                .tradeId("TRD-1")
+                .buyOrderId("BUY-1")
+                .sellOrderId("SELL-1")
+                .buyerId("buyer")
+                .sellerId("seller")
+                .symbol("AAPL")
+                .quantity(2.0d)
+                .executedPrice(100.0d)
+                .executedAt(Instant.now())
+                .build();
+
+        consumer.consumeTradeExecution(trade);
+        consumer.consumeTradeExecution(trade);
+
+        assertEquals(-200.0d, consumer.getBalance("buyer").get("balance"));
+        assertEquals(200.0d, consumer.getBalance("seller").get("balance"));
+    }
 }

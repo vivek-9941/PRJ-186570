@@ -2,8 +2,9 @@ package org.vivek.order.repository;
 
 import org.springframework.stereotype.Repository;
 import org.vivek.commonmodule.model.Order;
+import org.vivek.commonmodule.model.OrderStatus;
+import org.vivek.commonmodule.model.OrderType;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -25,6 +26,13 @@ public class OrderRepository {
     public List<Order> findByUserId(String userId) {
         return orderStore.values().stream()
                 .filter(order -> userId.equals(order.getUserId()))
+                .collect(Collectors.toList());
+    }
+
+    public List<Order> findByStatusInAndOrderType(List<OrderStatus> statuses, OrderType orderType) {
+        return orderStore.values().stream()
+                .filter(order -> statuses.contains(order.getStatus()))
+                .filter(order -> orderType == order.getOrderType())
                 .collect(Collectors.toList());
     }
 }

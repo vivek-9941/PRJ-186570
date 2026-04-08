@@ -1,9 +1,12 @@
 package com.trade.orderservice.dag;
 
 import com.google.common.util.concurrent.ListenableFuture;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.micrometer.core.annotation.Timed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.vivek.commonmodule.model.DAGResult;
 import org.vivek.commonmodule.model.Order;
@@ -25,6 +28,7 @@ public class DAGExecutor {
     private final MarginServiceGrpc.MarginServiceFutureStub marginStub;
     private final ComplianceServiceGrpc.ComplianceServiceFutureStub complianceStub;
     private final ApplicationEventPublisher eventPublisher;
+    private final DAGExecutor self;
 
     private final ExecutorService executorService;
     private final ScheduledExecutorService scheduledExecutor;
@@ -32,11 +36,13 @@ public class DAGExecutor {
     public DAGExecutor(RiskServiceGrpc.RiskServiceFutureStub riskStub,
                        MarginServiceGrpc.MarginServiceFutureStub marginStub,
                        ComplianceServiceGrpc.ComplianceServiceFutureStub complianceStub,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,
+                       @Lazy DAGExecutor self) {
         this.riskStub = riskStub;
         this.marginStub = marginStub;
         this.complianceStub = complianceStub;
         this.eventPublisher = eventPublisher;
+        this.self = self;
 
         ThreadFactory threadFactory = new ThreadFactory() {
             private int count = 0;
@@ -54,57 +60,15 @@ public class DAGExecutor {
         log.info("Starting DAG execution for order: {}", order.getOrderId());
 
         CompletableFuture<TaskResult> riskTask = executeWithRetry("risk-service", order, () -> {
-            org.vivek.trade.risk.grpc.ValidationRequest request = org.vivek.trade.risk.grpc.ValidationRequest.newBuilder()
-                    .setOrderId(order.getOrderId())
-                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
-                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
-                    .setSide(order.getSide() != null ? order.getSide().name() : "")
-                    .setQuantity(order.getQuantity())
-                    .setPrice(order.getPrice())
-                    .build();
-            return toCompletableFuture(riskStub.validate(request))
-                    .thenApply(res -> TaskResult.builder()
-                            .serviceId(res.getServiceId())
-                            .success(res.getSuccess())
-                            .reason(res.getReason())
-                            .latencyMs(res.getLatencyMs())
-                            .build());
+            return self.callRisk(order);
         });
 
         CompletableFuture<TaskResult> marginTask = executeWithRetry("margin-service", order, () -> {
-            org.vivek.trade.margin.grpc.ValidationRequest request = org.vivek.trade.margin.grpc.ValidationRequest.newBuilder()
-                    .setOrderId(order.getOrderId())
-                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
-                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
-                    .setSide(order.getSide() != null ? order.getSide().name() : "")
-                    .setQuantity(order.getQuantity())
-                    .setPrice(order.getPrice())
-                    .build();
-            return toCompletableFuture(marginStub.validate(request))
-                    .thenApply(res -> TaskResult.builder()
-                            .serviceId(res.getServiceId())
-                            .success(res.getSuccess())
-                            .reason(res.getReason())
-                            .latencyMs(res.getLatencyMs())
-                            .build());
+            return self.callMargin(order);
         });
 
         CompletableFuture<TaskResult> complianceTask = executeWithRetry("compliance-service", order, () -> {
-            org.vivek.trade.compliance.grpc.ValidationRequest request = org.vivek.trade.compliance.grpc.ValidationRequest.newBuilder()
-                    .setOrderId(order.getOrderId())
-                    .setUserId(order.getUserId() != null ? order.getUserId() : "")
-                    .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
-                    .setSide(order.getSide() != null ? order.getSide().name() : "")
-                    .setQuantity(order.getQuantity())
-                    .setPrice(order.getPrice())
-                    .build();
-            return toCompletableFuture(complianceStub.validate(request))
-                    .thenApply(res -> TaskResult.builder()
-                            .serviceId(res.getServiceId())
-                            .success(res.getSuccess())
-                            .reason(res.getReason())
-                            .latencyMs(res.getLatencyMs())
-                            .build());
+            return self.callCompliance(order);
         });
 
         return CompletableFuture.allOf(riskTask, marginTask, complianceTask).thenApply(v -> {
@@ -142,6 +106,11 @@ public class DAGExecutor {
     private CompletableFuture<TaskResult> retryAsync(Supplier<CompletableFuture<TaskResult>> supplier, int retriesLeft, long delayMs) {
         // Wrap each gRPC future with a 500ms timeout
         return supplier.get().orTimeout(500, TimeUnit.MILLISECONDS).handle((result, ex) -> {
+            if (result != null && !result.isSuccess() && result.getReason() != null
+                    && result.getReason().startsWith("CIRCUIT_OPEN")) {
+                return CompletableFuture.completedFuture(result);
+            }
+
             if (ex != null || (result != null && !result.isSuccess())) {
                 if (retriesLeft > 0) {
                     log.warn("Retrying task due to failure/timeout, retries left: {}", retriesLeft);
@@ -162,6 +131,94 @@ public class DAGExecutor {
             }
             return CompletableFuture.completedFuture(result);
         }).thenCompose(fn -> fn);
+    }
+
+    @CircuitBreaker(name = "riskService", fallbackMethod = "riskFallback")
+    CompletableFuture<TaskResult> callRisk(Order order) {
+        org.vivek.trade.risk.grpc.ValidationRequest request = org.vivek.trade.risk.grpc.ValidationRequest.newBuilder()
+                .setOrderId(order.getOrderId())
+                .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                .setSide(order.getSide() != null ? order.getSide().name() : "")
+                .setQuantity(order.getQuantity())
+                .setPrice(order.getPrice())
+                .build();
+        return toCompletableFuture(riskStub.validate(request))
+                .thenApply(res -> TaskResult.builder()
+                        .serviceId(res.getServiceId())
+                        .success(res.getSuccess())
+                        .reason(res.getReason())
+                        .latencyMs(res.getLatencyMs())
+                        .build());
+    }
+
+    @CircuitBreaker(name = "marginService", fallbackMethod = "marginFallback")
+    CompletableFuture<TaskResult> callMargin(Order order) {
+        org.vivek.trade.margin.grpc.ValidationRequest request = org.vivek.trade.margin.grpc.ValidationRequest.newBuilder()
+                .setOrderId(order.getOrderId())
+                .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                .setSide(order.getSide() != null ? order.getSide().name() : "")
+                .setQuantity(order.getQuantity())
+                .setPrice(order.getPrice())
+                .setOrderType(order.getOrderType() != null ? order.getOrderType().name() : "")
+                .build();
+        return toCompletableFuture(marginStub.validate(request))
+                .thenApply(res -> TaskResult.builder()
+                        .serviceId(res.getServiceId())
+                        .success(res.getSuccess())
+                        .reason(res.getReason())
+                        .latencyMs(res.getLatencyMs())
+                        .build());
+    }
+
+    @CircuitBreaker(name = "complianceService", fallbackMethod = "complianceFallback")
+    CompletableFuture<TaskResult> callCompliance(Order order) {
+        org.vivek.trade.compliance.grpc.ValidationRequest request = org.vivek.trade.compliance.grpc.ValidationRequest.newBuilder()
+                .setOrderId(order.getOrderId())
+                .setUserId(order.getUserId() != null ? order.getUserId() : "")
+                .setSymbol(order.getSymbol() != null ? order.getSymbol() : "")
+                .setSide(order.getSide() != null ? order.getSide().name() : "")
+                .setQuantity(order.getQuantity())
+                .setPrice(order.getPrice())
+                .build();
+        return toCompletableFuture(complianceStub.validate(request))
+                .thenApply(res -> TaskResult.builder()
+                        .serviceId(res.getServiceId())
+                        .success(res.getSuccess())
+                        .reason(res.getReason())
+                        .latencyMs(res.getLatencyMs())
+                        .build());
+    }
+
+    CompletableFuture<TaskResult> riskFallback(Order order, CallNotPermittedException e) {
+        log.warn("Circuit OPEN for risk-service, failing fast");
+        return CompletableFuture.completedFuture(TaskResult.builder()
+                .serviceId("risk-service")
+                .success(false)
+                .reason("CIRCUIT_OPEN: risk-service unavailable")
+                .latencyMs(0L)
+                .build());
+    }
+
+    CompletableFuture<TaskResult> marginFallback(Order order, CallNotPermittedException e) {
+        log.warn("Circuit OPEN for margin-service, failing fast");
+        return CompletableFuture.completedFuture(TaskResult.builder()
+                .serviceId("margin-service")
+                .success(false)
+                .reason("CIRCUIT_OPEN: margin-service unavailable")
+                .latencyMs(0L)
+                .build());
+    }
+
+    CompletableFuture<TaskResult> complianceFallback(Order order, CallNotPermittedException e) {
+        log.warn("Circuit OPEN for compliance-service, failing fast");
+        return CompletableFuture.completedFuture(TaskResult.builder()
+                .serviceId("compliance-service")
+                .success(false)
+                .reason("CIRCUIT_OPEN: compliance-service unavailable")
+                .latencyMs(0L)
+                .build());
     }
 
     private <T> CompletableFuture<T> toCompletableFuture(ListenableFuture<T> listenableFuture) {
