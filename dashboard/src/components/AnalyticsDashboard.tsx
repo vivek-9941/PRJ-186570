@@ -63,7 +63,11 @@ export default function AnalyticsDashboard() {
           </thead>
           <tbody>
             {analyticsRows.length === 0 && !analyticsLoading ? (
-              <tr><td className="px-3 py-3 text-center text-slate-500" colSpan={5}>No analytics data available yet.</td></tr>
+              <tr>
+                <td className="px-3 py-3 text-center text-slate-500" colSpan={5}>
+                  No analytics data yet. Place matching BUY/SELL orders (for example `U2` BUY and `U1` SELL on the same symbol/price) to generate executed trades.
+                </td>
+              </tr>
             ) : (
               analyticsRows.map((row) => (
                 <tr key={row.symbol} className="border-t border-slate-200 text-slate-700">

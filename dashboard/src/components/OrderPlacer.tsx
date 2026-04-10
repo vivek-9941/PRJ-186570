@@ -61,6 +61,7 @@ export default function OrderPlacer({ latestTicks }: OrderPlacerProps) {
           userId: normalizedUserId,
           symbol,
           side,
+          orderType: "LIMIT",
           quantity: parsedQuantity,
           price: parsedPrice
         })

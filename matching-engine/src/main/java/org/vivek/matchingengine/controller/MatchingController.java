@@ -72,7 +72,6 @@ public class MatchingController {
             log.info("Order {} generated {} fills, totalFilled={}, remainingQty={}",
                     order.getOrderId(), executions.size(), totalFilled, remainingQty);
         }
-
         return ResponseEntity.ok(response);
     }
 

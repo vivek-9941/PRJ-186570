@@ -7,7 +7,7 @@ grpc:
       address: static://${RISK_HOST:localhost}:9091
       negotiation-type: plaintext
     margin-service:
-      address: static://${MARGIN_HOST:localhost}:9092
+      address: static://${MARGIN_HOST:localhost}:9094
       negotiation-type: plaintext
     compliance-service:
       address: static://${COMPLIANCE_HOST:localhost}:9093

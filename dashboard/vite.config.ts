@@ -16,7 +16,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/ledger/, "")
       },
       "/api/analytics": {
-        target: "http://localhost:8083",
+        target: "http://localhost:8085",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/analytics/, "")
       },

@@ -30,7 +30,7 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
     private final Map<String, Double> holdingsValue = new ConcurrentHashMap<>();
     private final Map<String, Reservation> orderReservations = new ConcurrentHashMap<>();
 
-    @Value("${grpc.server.port:9092}")
+    @Value("${grpc.server.port:9094}")
     private int port;
 
     @PostConstruct
@@ -209,7 +209,7 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
             }
         };
     }
-
+    
     private double releaseReservedMargin(String orderId, String reason) {
         if (orderId == null || orderId.isBlank()) {
             return 0.0d;
