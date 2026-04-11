@@ -109,7 +109,6 @@ class RiskServiceImplTest {
 
     private static final class TestObserver implements StreamObserver<ValidationResponse> {
         private ValidationResponse response;
-        private Throwable error;
 
         @Override
         public void onNext(ValidationResponse value) {
@@ -118,14 +117,12 @@ class RiskServiceImplTest {
 
         @Override
         public void onError(Throwable t) {
-            this.error = t;
+            throw new AssertionError("Unexpected observer error", t);
         }
 
         @Override
         public void onCompleted() {
-            if (error != null) {
-                throw new AssertionError("Unexpected observer error", error);
-            }
+            // no-op
         }
     }
 }
