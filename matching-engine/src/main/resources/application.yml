@@ -15,3 +15,9 @@ management:
     web:
       exposure:
         include: health,prometheus
+
+matching:
+  orderbook:
+    bootstrap:
+      orders-per-symbol: 10
+      price-step-ratio: 0.001

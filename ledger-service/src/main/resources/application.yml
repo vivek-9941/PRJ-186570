@@ -12,7 +12,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "com.trade.common.*"
+        spring.json.trusted.packages: "org.vivek.commonmodule.model"
 
 kafka:
   consumer:
