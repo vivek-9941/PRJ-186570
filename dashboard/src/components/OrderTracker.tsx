@@ -21,20 +21,20 @@ const statusPaths: Record<string, string[]> = {
 
 const colorClasses: Record<TrackerStep["color"], { dot: string; text: string }> = {
   green: {
-    dot: "bg-emerald-500 border-emerald-500",
-    text: "text-emerald-700"
+    dot: "bg-[#66d9cc] border-[#66d9cc]",
+    text: "text-[#84f5e8]"
   },
   amber: {
-    dot: "bg-amber-500 border-amber-500",
-    text: "text-amber-700"
+    dot: "bg-[#ffb870] border-[#ffb870]",
+    text: "text-[#ffdcbe]"
   },
   red: {
-    dot: "bg-rose-500 border-rose-500",
-    text: "text-rose-700"
+    dot: "bg-[#ffb4ab] border-[#ffb4ab]",
+    text: "text-[#ffdad6]"
   },
   gray: {
-    dot: "bg-slate-300 border-slate-300",
-    text: "text-slate-500"
+    dot: "bg-[#8d90a2] border-[#8d90a2]",
+    text: "text-[#8d90a2]"
   }
 };
 
@@ -253,32 +253,32 @@ export default function OrderTracker() {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-800">LIVE ORDER TRACKER</h2>
-      <p className="mt-1 text-sm text-slate-500">Track order progression in real time.</p>
+    <section className="panel">
+      <h2 className="panel-title">LIVE ORDER TRACKER</h2>
+      <p className="panel-subtitle">Track order progression in real time.</p>
 
       <form className="mt-5 flex gap-2" onSubmit={startTracking}>
         <input
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+          className="input-dark flex-1"
           placeholder="Enter orderId"
           value={trackInput}
           onChange={(event) => setTrackInput(event.target.value)}
         />
         <button
           type="submit"
-          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-900"
+          className="btn-primary px-4 py-2"
         >
           Track
         </button>
       </form>
 
-      {trackerLoading && <p className="mt-4 text-sm font-medium text-slate-500">Loading latest status...</p>}
-      {trackerError && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{trackerError}</p>}
-      {cancelMessage && <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{cancelMessage}</p>}
+      {trackerLoading && <p className="mt-4 text-sm font-medium text-[#c3c5d9]">Loading latest status...</p>}
+      {trackerError && <p className="mt-4 rounded-lg border border-[#ffb4ab]/35 bg-[#93000a]/35 px-3 py-2 text-sm text-[#ffdad6]">{trackerError}</p>}
+      {cancelMessage && <p className="mt-4 rounded-lg border border-[#66d9cc]/35 bg-[#1ea296]/20 px-3 py-2 text-sm text-[#84f5e8]">{cancelMessage}</p>}
       {activeOrderId && !trackerError && (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <div className="mt-4 rounded-lg border border-[#434656]/85 bg-[#0b1326]/70 px-3 py-2 text-sm text-[#c3c5d9]">
           <p><span className="font-semibold">Tracking:</span> {activeOrderId}</p>
-          <p className={trackingLive ? "text-amber-700" : "text-emerald-700"}>
+          <p className={trackingLive ? "text-[#ffdcbe]" : "text-[#84f5e8]"}>
             {trackingLive ? "Polling every 1 second" : "Polling stopped (terminal status)."}
           </p>
         </div>
@@ -289,18 +289,18 @@ export default function OrderTracker() {
           type="button"
           onClick={cancelOrder}
           disabled={cancelLoading}
-          className="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+          className="mt-4 rounded-lg bg-[#93000a] px-4 py-2 text-sm font-semibold text-[#ffdad6] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {cancelLoading ? "Cancelling..." : "Cancel order"}
         </button>
       )}
 
-      <ol className="mt-6 border-l-2 border-slate-200 pl-5">
+      <ol className="mt-6 border-l-2 border-[#434656]/80 pl-5">
         {trackerSteps.map((step) => (
           <li key={step.key} className="relative mb-6 last:mb-0">
             <span className={`absolute -left-[31px] top-1 h-4 w-4 rounded-full border-2 ${colorClasses[step.color].dot}`} />
             <p className={`text-sm font-semibold ${colorClasses[step.color].text}`}>{step.label}</p>
-            <p className="text-xs text-slate-500">{formatTimestamp(step.timestamp)}</p>
+            <p className="text-xs text-[#8d90a2]">{formatTimestamp(step.timestamp)}</p>
           </li>
         ))}
       </ol>

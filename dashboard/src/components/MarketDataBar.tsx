@@ -8,13 +8,13 @@ interface MarketDataBarProps {
 }
 
 function formatPrice(value: number): string {
-  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `Rs ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function trendClass(change: number): string {
-  if (change > 0) return "text-emerald-700";
-  if (change < 0) return "text-rose-700";
-  return "text-slate-600";
+  if (change > 0) return "text-[#84f5e8]";
+  if (change < 0) return "text-[#ffb4ab]";
+  return "text-[#c3c5d9]";
 }
 
 function sparklinePoints(values: number[]): string {
@@ -36,7 +36,7 @@ function sparklinePoints(values: number[]): string {
 }
 
 function Sparkline({ tick, values }: { tick: PriceTick; values: number[] }) {
-  const stroke = tick.change >= 0 ? "#0f766e" : "#be123c";
+  const stroke = tick.change >= 0 ? "#66d9cc" : "#ffb4ab";
   const points = sparklinePoints(values.length ? values : [tick.price]);
 
   return (
@@ -48,10 +48,10 @@ function Sparkline({ tick, values }: { tick: PriceTick; values: number[] }) {
 
 export default function MarketDataBar({ latestTicks, history, symbols, connected }: MarketDataBarProps) {
   return (
-    <section className="rounded-2xl border border-cyan-200/70 bg-gradient-to-r from-cyan-50 to-sky-100 p-4 shadow-sm xl:col-span-3">
+    <section className="rounded-2xl border border-[#434656]/70 bg-gradient-to-r from-[#131b2e] via-[#171f33] to-[#222a3d] p-4 shadow-sm xl:col-span-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-[0.18em] text-cyan-800">LIVE MARKET DATA</h2>
-        <div className={`rounded-full px-2.5 py-1 text-xs font-semibold ${connected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+        <h2 className="text-sm font-semibold tracking-[0.18em] text-[#66d9cc]">LIVE MARKET DATA</h2>
+        <div className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${connected ? "border-[#66d9cc]/35 bg-[#1ea296]/20 text-[#84f5e8]" : "border-[#ffb870]/35 bg-[#955700]/20 text-[#ffdcbe]"}`}>
           {connected ? "WebSocket Connected" : "Reconnecting..."}
         </div>
       </div>
@@ -62,15 +62,16 @@ export default function MarketDataBar({ latestTicks, history, symbols, connected
           const changeSign = tick.change > 0 ? "+" : "";
 
           return (
-            <article key={symbol} className="rounded-xl border border-white/70 bg-white/75 px-4 py-3 backdrop-blur-sm">
+            <article key={symbol} className="rounded-xl border border-[#434656]/70 bg-[#0b1326]/70 px-4 py-3 backdrop-blur-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold tracking-wider text-slate-700">{symbol}</h3>
+                <h3 className="text-sm font-bold tracking-wider text-[#b7c4ff]">{symbol}</h3>
                 <span className={trendClass(tick.change)}>{changeSign}{tick.changePercent.toFixed(2)}%</span>
               </div>
-              <p className="mt-1 font-mono text-2xl font-bold tracking-tight text-slate-900">{formatPrice(tick.price)}</p>
+              <p className="mt-1 font-mono text-2xl font-bold tracking-tight text-[#dae2fd]">{formatPrice(tick.price)}</p>
               <p className={`text-sm font-semibold ${trendClass(tick.change)}`}>
-                {changeSign}{tick.change.toFixed(2)}
+                {changeSign}Rs {tick.change.toFixed(2)} ({changeSign}{tick.changePercent.toFixed(2)}%)
               </p>
+              <p className="mt-0.5 text-xs font-medium text-[#c3c5d9]">VWAP {formatPrice(tick.vwap)}</p>
               <div className="mt-2">
                 <Sparkline tick={tick} values={history[symbol]} />
               </div>

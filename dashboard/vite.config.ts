@@ -16,14 +16,24 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/ledger/, "")
       },
       "/api/analytics": {
-        target: "http://localhost:8083",
+        target: "http://localhost:8085",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/analytics/, "")
+      },
+      "/api/margin": {
+        target: "http://localhost:8092",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/margin/, "")
       },
       "/api/market-data": {
         target: "http://localhost:8084",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/market-data/, "")
+      },
+      "/api/matching": {
+        target: "http://localhost:8081",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/matching/, "")
       }
     }
   }

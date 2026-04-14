@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.vivek.marginservice.service.MarginServiceImpl;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/margin")
 @RequiredArgsConstructor
@@ -23,9 +25,24 @@ public class MarginController {
     }
 
     @PutMapping("/{userId}/deposit")
-    public ResponseEntity<MarginServiceImpl.MarginSnapshot> deposit(
+    public ResponseEntity<?> deposit(
             @PathVariable String userId,
             @RequestParam double amount) {
-        return ResponseEntity.ok(marginService.deposit(userId, amount));
+        try {
+            return ResponseEntity.ok(marginService.deposit(userId, amount));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PutMapping("/{userId}/withdraw")
+    public ResponseEntity<?> withdraw(
+            @PathVariable String userId,
+            @RequestParam double amount) {
+        try {
+            return ResponseEntity.ok(marginService.withdraw(userId, amount));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
     }
 }

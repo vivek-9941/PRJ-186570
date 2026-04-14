@@ -106,12 +106,15 @@ public class DAGExecutor {
     private CompletableFuture<TaskResult> retryAsync(Supplier<CompletableFuture<TaskResult>> supplier, int retriesLeft, long delayMs) {
         // Wrap each gRPC future with a 500ms timeout
         return supplier.get().orTimeout(500, TimeUnit.MILLISECONDS).handle((result, ex) -> {
-            if (result != null && !result.isSuccess() && result.getReason() != null
-                    && result.getReason().startsWith("CIRCUIT_OPEN")) {
+            // Business-level validation failures (for example INSUFFICIENT_MARGIN) should not be retried.
+            if (result != null && !result.isSuccess()) {
+                if (result.getReason() != null && result.getReason().startsWith("CIRCUIT_OPEN")) {
+                    return CompletableFuture.completedFuture(result);
+                }
                 return CompletableFuture.completedFuture(result);
             }
 
-            if (ex != null || (result != null && !result.isSuccess())) {
+            if (ex != null) {
                 if (retriesLeft > 0) {
                     log.warn("Retrying task due to failure/timeout, retries left: {}", retriesLeft);
                     CompletableFuture<TaskResult> retryFuture = new CompletableFuture<>();

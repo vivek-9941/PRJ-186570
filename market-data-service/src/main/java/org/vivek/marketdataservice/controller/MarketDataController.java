@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.vivek.marketdataservice.model.PriceTick;
 import org.vivek.marketdataservice.service.PriceSimulator;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -32,5 +33,17 @@ public class MarketDataController {
             ));
         }
         return ResponseEntity.ok(tick);
+    }
+
+    @GetMapping("/{symbol}/history")
+    public ResponseEntity<?> getPriceHistory(@PathVariable String symbol) {
+        PriceTick latestTick = priceSimulator.getLatestTick(symbol);
+        if (latestTick == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Unknown symbol. Supported symbols: " + String.join(", ", priceSimulator.symbols())
+            ));
+        }
+        List<PriceTick> history = priceSimulator.getHistory(symbol);
+        return ResponseEntity.ok(history);
     }
 }

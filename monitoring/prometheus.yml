@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: order-service
+    static_configs:
+      - targets: ['order-service:8080']
+    metrics_path: /actuator/prometheus
+
+  - job_name: matching-engine
+    static_configs:
+      - targets: ['matching-engine:8081']
+    metrics_path: /actuator/prometheus
+
+  - job_name: ledger-service
+    static_configs:
+      - targets: ['ledger-service:8082']
+    metrics_path: /actuator/prometheus
+
+  - job_name: notification-service
+    static_configs:
+      - targets: ['notification-service:8083']
+    metrics_path: /actuator/prometheus
+
+  - job_name: market-data-service
+    static_configs:
+      - targets: ['market-data-service:8084']
+    metrics_path: /actuator/prometheus
+
+  - job_name: analytics-service
+    static_configs:
+      - targets: ['analytics-service:8085']
+    metrics_path: /actuator/prometheus
+
+  - job_name: risk-service
+    static_configs:
+      - targets: ['risk-service:8090']
+    metrics_path: /actuator/prometheus
+
+  - job_name: margin-service
+    static_configs:
+      - targets: ['margin-service:8092']
+    metrics_path: /actuator/prometheus
+
+  - job_name: compliance-service
+    static_configs:
+      - targets: ['compliance-service:8093']
+    metrics_path: /actuator/prometheus

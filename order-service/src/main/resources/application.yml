@@ -7,7 +7,7 @@ grpc:
       address: static://${RISK_HOST:localhost}:9091
       negotiation-type: plaintext
     margin-service:
-      address: static://${MARGIN_HOST:localhost}:9092
+      address: static://${MARGIN_HOST:localhost}:9094
       negotiation-type: plaintext
     compliance-service:
       address: static://${COMPLIANCE_HOST:localhost}:9093
@@ -27,17 +27,22 @@ resilience4j:
     instances:
       riskService:
         slidingWindowSize: 10
+        minimumNumberOfCalls: 5
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         permittedCallsInHalfOpenState: 3
       marginService:
         slidingWindowSize: 10
+        minimumNumberOfCalls: 5
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
+        permittedCallsInHalfOpenState: 3
       complianceService:
         slidingWindowSize: 10
+        minimumNumberOfCalls: 5
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
+        permittedCallsInHalfOpenState: 3
 
 matching-engine:
   url: http://${MATCHING_ENGINE_HOST:localhost}:8081

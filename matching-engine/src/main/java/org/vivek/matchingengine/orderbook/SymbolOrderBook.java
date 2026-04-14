@@ -1,9 +1,8 @@
 package org.vivek.matchingengine.orderbook;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Component;
 import org.vivek.commonmodule.model.CancellationEvent;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.OrderSide;
@@ -20,11 +19,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-@Component
 @Slf4j
-public class OrderBook {
+public class SymbolOrderBook {
 
     private static final double EPSILON = 1e-9;
+    private static final int DEFAULT_DEPTH_LEVELS = 5;
+
+    @Getter
+    private final String symbol;
 
     // Descending: highest bid first
     private final ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> buyOrders =
@@ -34,8 +36,16 @@ public class OrderBook {
     private final ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> sellOrders =
             new ConcurrentSkipListMap<>();
 
-    @Autowired(required = false)
-    private KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate;
+    private final KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate;
+
+    public SymbolOrderBook(String symbol) {
+        this(symbol, null);
+    }
+
+    public SymbolOrderBook(String symbol, KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate) {
+        this.symbol = symbol;
+        this.cancellationKafkaTemplate = cancellationKafkaTemplate;
+    }
 
     public synchronized List<TradeExecution> match(Order incomingOrder) {
         double remainingQty = incomingOrder.getQuantity();
@@ -73,6 +83,63 @@ public class OrderBook {
             return cancelledBuy;
         }
         return cancelFromBook(sellOrders, orderId);
+    }
+
+    public synchronized BookSnapshot snapshot() {
+        Double bestBid = buyOrders.isEmpty() ? null : buyOrders.firstKey();
+        Double bestAsk = sellOrders.isEmpty() ? null : sellOrders.firstKey();
+
+        return BookSnapshot.builder()
+                .symbol(symbol)
+                .bestBid(bestBid)
+                .bestAsk(bestAsk)
+                .spread(spread(bestBid, bestAsk))
+                .buyLevels(extractLevels(buyOrders, DEFAULT_DEPTH_LEVELS))
+                .sellLevels(extractLevels(sellOrders, DEFAULT_DEPTH_LEVELS))
+                .totalBuyQty(totalQty(buyOrders))
+                .totalSellQty(totalQty(sellOrders))
+                .build();
+    }
+
+    public synchronized OrderBookDepth depth() {
+        Double bestBid = buyOrders.isEmpty() ? null : buyOrders.firstKey();
+        Double bestAsk = sellOrders.isEmpty() ? null : sellOrders.firstKey();
+
+        return OrderBookDepth.builder()
+                .symbol(symbol)
+                .bids(extractLevels(buyOrders, DEFAULT_DEPTH_LEVELS))
+                .asks(extractLevels(sellOrders, DEFAULT_DEPTH_LEVELS))
+                .spread(spread(bestBid, bestAsk))
+                .midPrice(midPrice(bestBid, bestAsk))
+                .build();
+    }
+
+    public synchronized void addRestingOrder(Order order) {
+        if (order == null) {
+            throw new IllegalArgumentException("Order is required");
+        }
+        if (order.getSide() == null) {
+            throw new IllegalArgumentException("Order side is required");
+        }
+        if (order.getQuantity() <= EPSILON) {
+            throw new IllegalArgumentException("Order quantity must be greater than 0");
+        }
+        if (!symbol.equalsIgnoreCase(order.getSymbol())) {
+            throw new IllegalArgumentException("Order symbol does not match book symbol");
+        }
+
+        if (order.getOrderType() == null) {
+            order.setOrderType(OrderType.LIMIT);
+        }
+        if (order.getStatus() == null) {
+            order.setStatus(OrderStatus.PENDING);
+        }
+        if (order.getCreatedAt() == null) {
+            order.setCreatedAt(Instant.now());
+        }
+        order.setUpdatedAt(Instant.now());
+
+        addToBook(order);
     }
 
     private double executeIncomingBuy(Order incomingBuy, double remainingQty,
@@ -257,6 +324,47 @@ public class OrderBook {
 
     private double normalizeQuantity(double quantity) {
         return quantity <= EPSILON ? 0.0d : quantity;
+    }
+
+    private Double spread(Double bestBid, Double bestAsk) {
+        if (bestBid == null || bestAsk == null) {
+            return null;
+        }
+        return bestAsk - bestBid;
+    }
+
+    private Double midPrice(Double bestBid, Double bestAsk) {
+        if (bestBid == null || bestAsk == null) {
+            return null;
+        }
+        return (bestBid + bestAsk) / 2.0d;
+    }
+
+    private double totalQty(ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> side) {
+        return side.values().stream()
+                .flatMap(queue -> queue.stream())
+                .mapToDouble(Order::getQuantity)
+                .sum();
+    }
+
+    private List<PriceLevel> extractLevels(ConcurrentSkipListMap<Double, ConcurrentLinkedQueue<Order>> side, int levels) {
+        List<PriceLevel> result = new ArrayList<>();
+        for (Double price : side.keySet()) {
+            if (result.size() >= levels) {
+                break;
+            }
+            ConcurrentLinkedQueue<Order> queue = side.get(price);
+            if (queue == null || queue.isEmpty()) {
+                continue;
+            }
+            double quantity = queue.stream().mapToDouble(Order::getQuantity).sum();
+            result.add(PriceLevel.builder()
+                    .price(price)
+                    .quantity(quantity)
+                    .orderCount(queue.size())
+                    .build());
+        }
+        return result;
     }
 
     private TradeExecution buildTrade(Order buyOrder, Order sellOrder, double executedPrice, double quantity) {

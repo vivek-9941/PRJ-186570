@@ -12,6 +12,7 @@ import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +104,24 @@ class MarginServiceImplTest {
 
         assertEquals(75000.0d, snapshot.cashBalance(), 0.0001d);
         assertEquals(75000.0d, snapshot.availableMargin(), 0.0001d);
+    }
+
+    @Test
+    void withdrawReducesCashBalance() {
+        MarginServiceImpl.MarginSnapshot snapshot = marginService.withdraw("U1", 10000.0d);
+
+        assertEquals(90000.0d, snapshot.cashBalance(), 0.0001d);
+        assertEquals(240000.0d, snapshot.availableMargin(), 0.0001d);
+    }
+
+    @Test
+    void withdrawFailsWhenCashIsInsufficient() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> marginService.withdraw("U3", 60000.0d)
+        );
+
+        assertTrue(exception.getMessage().contains("INSUFFICIENT_FUNDS"));
     }
 
     private ValidationRequest request(

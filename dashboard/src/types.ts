@@ -15,6 +15,7 @@ export interface OrderDetails {
   quantity: number;
   price: number;
   status: string;
+  rejectionReason?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -52,6 +53,29 @@ export interface PriceTick {
   changePercent: number;
   timestamp: string;
   volume: number;
+  vwap: number;
 }
 
 export type MarketDataBySymbol = Record<SymbolOption, PriceTick>;
+
+export interface OrderBookDepthLevel {
+  price: number;
+  quantity: number;
+  orderCount: number;
+}
+
+export interface OrderBookDepth {
+  symbol: SymbolOption;
+  bids: OrderBookDepthLevel[];
+  asks: OrderBookDepthLevel[];
+  spread: number | null;
+  midPrice: number | null;
+}
+
+export interface MarginSnapshot {
+  cashBalance: number;
+  holdingsValue: number;
+  reservedMargin: number;
+  availableMargin: number;
+  totalNetworth: number;
+}

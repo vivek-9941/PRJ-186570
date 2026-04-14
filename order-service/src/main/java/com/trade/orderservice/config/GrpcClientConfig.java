@@ -15,7 +15,7 @@ public class GrpcClientConfig {
     @Value("${grpc.client.risk-service.address:static://localhost:9091}")
     private String riskAddress;
 
-    @Value("${grpc.client.margin-service.address:static://localhost:9092}")
+    @Value("${grpc.client.margin-service.address:static://localhost:9094}")
     private String marginAddress;
 
     @Value("${grpc.client.compliance-service.address:static://localhost:9093}")

@@ -26,11 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OrderBookTest {
 
     private static final String SYMBOL = "INFY";
-    private OrderBook orderBook;
+    private SymbolOrderBook orderBook;
 
     @BeforeEach
     void setUp() {
-        orderBook = new OrderBook();
+        orderBook = new SymbolOrderBook(SYMBOL);
     }
 
     @Test
@@ -183,7 +183,7 @@ class OrderBookTest {
 
     private Object getField(String name) {
         try {
-            Field field = OrderBook.class.getDeclaredField(name);
+            Field field = SymbolOrderBook.class.getDeclaredField(name);
             field.setAccessible(true);
             return field.get(orderBook);
         } catch (Exception e) {

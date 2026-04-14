@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: trade-engine-dashboards
+    folder: Trade Engine
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards

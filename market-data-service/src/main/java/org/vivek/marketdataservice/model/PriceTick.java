@@ -18,4 +18,5 @@ public class PriceTick {
     private double changePercent;
     private Instant timestamp;
     private int volume;
+    private double vwap;
 }

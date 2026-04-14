@@ -43,16 +43,16 @@ export default function AnalyticsDashboard() {
   }, []);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-800">ANALYTICS</h2>
-      <p className="mt-1 text-sm text-slate-500">Auto-refreshes every 5 seconds.</p>
+    <section className="panel">
+      <h2 className="panel-title">ANALYTICS</h2>
+      <p className="panel-subtitle">Auto-refreshes every 5 seconds.</p>
 
-      {analyticsLoading && <p className="mt-4 text-sm font-medium text-slate-500">Loading analytics...</p>}
-      {analyticsError && <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{analyticsError}</p>}
+      {analyticsLoading && <p className="mt-4 text-sm font-medium text-[#c3c5d9]">Loading analytics...</p>}
+      {analyticsError && <p className="mt-4 rounded-lg border border-[#ffb4ab]/35 bg-[#93000a]/35 px-3 py-2 text-sm text-[#ffdad6]">{analyticsError}</p>}
 
-      <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+      <div className="mt-4 overflow-x-auto rounded-lg border border-[#434656]/85 bg-[#0b1326]/55">
         <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+          <thead className="bg-[#171f33] text-left text-xs uppercase tracking-wide text-[#c3c5d9]">
             <tr>
               <th className="px-3 py-2">Symbol</th>
               <th className="px-3 py-2">Total Trades</th>
@@ -63,11 +63,15 @@ export default function AnalyticsDashboard() {
           </thead>
           <tbody>
             {analyticsRows.length === 0 && !analyticsLoading ? (
-              <tr><td className="px-3 py-3 text-center text-slate-500" colSpan={5}>No analytics data available yet.</td></tr>
+              <tr>
+                <td className="px-3 py-3 text-center text-[#8d90a2]" colSpan={5}>
+                  No analytics data yet. Place matching BUY/SELL orders (for example `U2` BUY and `U1` SELL on the same symbol/price) to generate executed trades.
+                </td>
+              </tr>
             ) : (
               analyticsRows.map((row) => (
-                <tr key={row.symbol} className="border-t border-slate-200 text-slate-700">
-                  <td className="px-3 py-2 font-semibold">{row.symbol}</td>
+                <tr key={row.symbol} className="border-t border-[#434656]/65 text-[#dae2fd]">
+                  <td className="px-3 py-2 font-semibold text-[#b7c4ff]">{row.symbol}</td>
                   <td className="px-3 py-2">{formatNumber(row.totalTrades)}</td>
                   <td className="px-3 py-2">{formatNumber(row.totalVolume)}</td>
                   <td className="px-3 py-2">{formatNumber(row.lastPrice)}</td>
@@ -79,14 +83,18 @@ export default function AnalyticsDashboard() {
         </table>
       </div>
 
-      <div className="mt-4 h-64 rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <div className="mt-4 h-64 rounded-lg border border-[#434656]/85 bg-[#0b1326]/65 p-2">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={analyticsRows}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
-            <XAxis dataKey="symbol" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="totalVolume" fill="#16a34a" radius={[6, 6, 0, 0]} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#434656" />
+            <XAxis dataKey="symbol" stroke="#c3c5d9" />
+            <YAxis stroke="#c3c5d9" />
+            <Tooltip
+              cursor={{ fill: "rgba(183, 196, 255, 0.08)" }}
+              contentStyle={{ background: "#171f33", border: "1px solid #434656", color: "#dae2fd" }}
+              labelStyle={{ color: "#b7c4ff" }}
+            />
+            <Bar dataKey="totalVolume" fill="#66d9cc" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

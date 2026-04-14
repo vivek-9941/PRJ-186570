@@ -16,6 +16,28 @@ export function formatNumber(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+export function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+  return value.toLocaleString(undefined, { style: "currency", currency: "INR", maximumFractionDigits: 2 });
+}
+
+export function getOrCreateClientUserId(): string {
+  const storageKey = "trade-dashboard-user-id";
+  const existingId = window.localStorage.getItem(storageKey);
+  if (existingId && existingId.trim()) {
+    return existingId;
+  }
+
+  const generated = window.crypto?.randomUUID
+    ? `USR-${window.crypto.randomUUID()}`
+    : `USR-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  window.localStorage.setItem(storageKey, generated);
+  return generated;
+}
+
 export async function parseError(response: Response): Promise<string> {
   const fallbackResponse = response.clone();
   try {
