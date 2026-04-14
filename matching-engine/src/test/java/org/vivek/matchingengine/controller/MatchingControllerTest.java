@@ -12,7 +12,8 @@ import org.vivek.commonmodule.model.OrderSide;
 import org.vivek.commonmodule.model.OrderStatus;
 import org.vivek.commonmodule.model.TradeExecution;
 import org.vivek.matchingengine.config.KafkaProducerConfig;
-import org.vivek.matchingengine.orderbook.OrderBook;
+import org.vivek.matchingengine.orderbook.OrderBookRegistry;
+import org.vivek.matchingengine.orderbook.SymbolOrderBook;
 
 import java.time.Instant;
 import java.util.List;
@@ -33,7 +34,10 @@ import static org.mockito.Mockito.when;
 class MatchingControllerTest {
 
     @Mock
-    private OrderBook orderBook;
+    private OrderBookRegistry orderBookRegistry;
+
+    @Mock
+    private SymbolOrderBook symbolOrderBook;
 
     @Mock
     private KafkaTemplate<String, TradeExecution> kafkaTemplate;
@@ -43,7 +47,7 @@ class MatchingControllerTest {
 
     @Test
     void matchReturnsAggregatedResponseAndPublishesEachExecution() {
-        MatchingController controller = new MatchingController(orderBook, kafkaTemplate, cancellationKafkaTemplate);
+        MatchingController controller = new MatchingController(orderBookRegistry, kafkaTemplate, cancellationKafkaTemplate);
         Order order = Order.builder()
                 .orderId("buy-1")
                 .userId("buyer")
@@ -59,7 +63,8 @@ class MatchingControllerTest {
                 execution("trade-2", "buy-1", "sell-2", 1.5d, 100.5d)
         );
 
-        when(orderBook.match(order)).thenReturn(executions);
+        when(orderBookRegistry.getBook("AAPL")).thenReturn(symbolOrderBook);
+        when(symbolOrderBook.match(order)).thenReturn(executions);
         when(kafkaTemplate.send(eq(KafkaProducerConfig.TOPIC_TRADE_EXECUTED), eq("buy-1"), any(TradeExecution.class)))
                 .thenReturn(new CompletableFuture<>());
 
@@ -75,7 +80,7 @@ class MatchingControllerTest {
 
     @Test
     void matchReturnsUnmatchedResponseWhenNoExecutionOccurs() {
-        MatchingController controller = new MatchingController(orderBook, kafkaTemplate, cancellationKafkaTemplate);
+        MatchingController controller = new MatchingController(orderBookRegistry, kafkaTemplate, cancellationKafkaTemplate);
         Order order = Order.builder()
                 .orderId("sell-1")
                 .userId("seller")
@@ -86,7 +91,8 @@ class MatchingControllerTest {
                 .status(OrderStatus.PENDING)
                 .build();
 
-        when(orderBook.match(order)).thenReturn(List.of());
+        when(orderBookRegistry.getBook("AAPL")).thenReturn(symbolOrderBook);
+        when(symbolOrderBook.match(order)).thenReturn(List.of());
 
         ResponseEntity<Map<String, Object>> response = controller.match(order);
 
@@ -100,7 +106,7 @@ class MatchingControllerTest {
 
     @Test
     void cancelPublishesCancellationEventWhenOrderIsRemoved() {
-        MatchingController controller = new MatchingController(orderBook, kafkaTemplate, cancellationKafkaTemplate);
+        MatchingController controller = new MatchingController(orderBookRegistry, kafkaTemplate, cancellationKafkaTemplate);
         Order cancelledOrder = Order.builder()
                 .orderId("ord-1")
                 .userId("user-1")
@@ -111,11 +117,12 @@ class MatchingControllerTest {
                 .status(OrderStatus.PENDING)
                 .build();
 
-        when(orderBook.cancelOrder("ord-1")).thenReturn(cancelledOrder);
+        when(orderBookRegistry.getBook("AAPL")).thenReturn(symbolOrderBook);
+        when(symbolOrderBook.cancelOrder("ord-1")).thenReturn(cancelledOrder);
         when(cancellationKafkaTemplate.send(eq(KafkaProducerConfig.TOPIC_ORDER_CANCELLED), eq("ord-1"), any(CancellationEvent.class)))
                 .thenReturn(new CompletableFuture<>());
 
-        ResponseEntity<Map<String, Object>> response = controller.cancel("ord-1");
+        ResponseEntity<Map<String, Object>> response = controller.cancel("ord-1", "AAPL");
 
         assertTrue((Boolean) response.getBody().get("cancelled"));
         verify(cancellationKafkaTemplate).send(eq(KafkaProducerConfig.TOPIC_ORDER_CANCELLED), eq("ord-1"), any(CancellationEvent.class));
@@ -123,11 +130,12 @@ class MatchingControllerTest {
 
     @Test
     void cancelReturnsFalseWhenOrderIsNotFoundInBook() {
-        MatchingController controller = new MatchingController(orderBook, kafkaTemplate, cancellationKafkaTemplate);
+        MatchingController controller = new MatchingController(orderBookRegistry, kafkaTemplate, cancellationKafkaTemplate);
 
-        when(orderBook.cancelOrder("ord-2")).thenReturn(null);
+        when(orderBookRegistry.getBook("AAPL")).thenReturn(symbolOrderBook);
+        when(symbolOrderBook.cancelOrder("ord-2")).thenReturn(null);
 
-        ResponseEntity<Map<String, Object>> response = controller.cancel("ord-2");
+        ResponseEntity<Map<String, Object>> response = controller.cancel("ord-2", "AAPL");
 
         assertFalse((Boolean) response.getBody().get("cancelled"));
         verifyNoInteractions(cancellationKafkaTemplate);
