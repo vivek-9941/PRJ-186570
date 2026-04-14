@@ -20,10 +20,20 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/analytics/, "")
       },
+      "/api/margin": {
+        target: "http://localhost:8092",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/margin/, "")
+      },
       "/api/market-data": {
         target: "http://localhost:8084",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/market-data/, "")
+      },
+      "/api/matching": {
+        target: "http://localhost:8081",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/matching/, "")
       }
     }
   }

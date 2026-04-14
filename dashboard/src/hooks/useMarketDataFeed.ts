@@ -13,7 +13,8 @@ function createFallbackTick(symbol: SymbolOption): PriceTick {
     change: 0,
     changePercent: 0,
     timestamp: new Date().toISOString(),
-    volume: 0
+    volume: 0,
+    vwap: 0
   };
 }
 
