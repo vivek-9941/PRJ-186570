@@ -23,6 +23,7 @@ public class Order {
     private OrderType orderType = OrderType.LIMIT;
     private LocalDateTime expiryTime;
     private OrderStatus status;
+    private String rejectionReason;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -37,6 +38,7 @@ public class Order {
                 .orderType(orderType)
                 .expiryTime(expiryTime)
                 .status(status)
+                .rejectionReason(rejectionReason)
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)
                 .build();

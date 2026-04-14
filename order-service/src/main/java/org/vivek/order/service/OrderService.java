@@ -42,6 +42,7 @@ public class OrderService {
         dagFuture.whenComplete((dagResult, throwable) -> {
             if (throwable != null) {
                 log.error("DAG execution failed exceptionally for order {}", order.getOrderId(), throwable);
+                order.setRejectionReason(throwable.getMessage() != null ? throwable.getMessage() : "Unexpected DAG failure");
                 updateStatus(order, OrderStatus.FAILED);
                 orderRepository.save(order);
                 return;
@@ -49,6 +50,7 @@ public class OrderService {
 
             try {
                 if (dagResult.isAllPassed()) {
+                    order.setRejectionReason(null);
                     // On DAGResult.allPassed=true: status -> APPROVED, then call matchingEngineClient.route(order)
                     updateStatus(order, OrderStatus.APPROVED);
                     orderRepository.save(order);
@@ -59,6 +61,7 @@ public class OrderService {
                     MatchingEngineResponse matchingResponse = matchingEngineClient.route(order);
                     if (matchingResponse == null) {
                         // Handle connection errors gracefully (log + mark order FAILED)
+                        order.setRejectionReason("MATCHING_ENGINE_UNAVAILABLE");
                         updateStatus(order, OrderStatus.FAILED);
                         orderRepository.save(order);
                     } else {
@@ -67,12 +70,14 @@ public class OrderService {
                     }
                 } else {
                     // On DAGResult.allPassed=false: status -> REJECTED, save rejection reason
+                    order.setRejectionReason(dagResult.getFinalReason());
                     updateStatus(order, OrderStatus.REJECTED);
                     log.info("Order {} rejected. Reason: {}", order.getOrderId(), dagResult.getFinalReason());
                     orderRepository.save(order);
                 }
             } catch (Exception ex) {
                 log.error("Unexpected error processing DAG result for order {}", order.getOrderId(), ex);
+                order.setRejectionReason(ex.getMessage() != null ? ex.getMessage() : "Unexpected processing failure");
                 updateStatus(order, OrderStatus.FAILED);
                 orderRepository.save(order);
             }

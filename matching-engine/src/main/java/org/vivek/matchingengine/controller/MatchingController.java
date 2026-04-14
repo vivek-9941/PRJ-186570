@@ -9,7 +9,10 @@ import org.vivek.commonmodule.model.CancellationEvent;
 import org.vivek.commonmodule.model.Order;
 import org.vivek.commonmodule.model.TradeExecution;
 import org.vivek.matchingengine.config.KafkaProducerConfig;
-import org.vivek.matchingengine.orderbook.OrderBook;
+import org.vivek.matchingengine.orderbook.BookSnapshot;
+import org.vivek.matchingengine.orderbook.OrderBookDepth;
+import org.vivek.matchingengine.orderbook.OrderBookRegistry;
+import org.vivek.matchingengine.orderbook.SymbolOrderBook;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,7 +26,7 @@ import java.util.Map;
 @Slf4j
 public class MatchingController {
 
-    private final OrderBook orderBook;
+    private final OrderBookRegistry orderBookRegistry;
     private final KafkaTemplate<String, TradeExecution> tradeKafkaTemplate;
     private final KafkaTemplate<String, CancellationEvent> cancellationKafkaTemplate;
 
@@ -34,7 +37,7 @@ public class MatchingController {
                 order.getQuantity(), order.getPrice());
 
         double originalQty = order.getQuantity();
-        List<TradeExecution> executions = orderBook.match(order);
+        List<TradeExecution> executions = orderBookRegistry.getBook(order.getSymbol()).match(order);
         double totalFilled = executions.stream()
                 .mapToDouble(TradeExecution::getQuantity)
                 .sum();
@@ -76,8 +79,19 @@ public class MatchingController {
     }
 
     @DeleteMapping("/orders/{orderId}")
-    public ResponseEntity<Map<String, Object>> cancel(@PathVariable String orderId) {
-        Order cancelledOrder = orderBook.cancelOrder(orderId);
+    public ResponseEntity<Map<String, Object>> cancel(@PathVariable String orderId,
+                                                      @RequestParam(required = false) String symbol) {
+        Order cancelledOrder = null;
+        if (symbol != null && !symbol.isBlank()) {
+            cancelledOrder = orderBookRegistry.getBook(symbol).cancelOrder(orderId);
+        } else {
+            for (SymbolOrderBook book : orderBookRegistry.getBooks().values()) {
+                cancelledOrder = book.cancelOrder(orderId);
+                if (cancelledOrder != null) {
+                    break;
+                }
+            }
+        }
         boolean cancelled = cancelledOrder != null;
 
         if (cancelledOrder != null) {
@@ -105,5 +119,20 @@ public class MatchingController {
         }
 
         return ResponseEntity.ok(Map.of("cancelled", cancelled));
+    }
+
+    @GetMapping("/orderbook/{symbol}")
+    public ResponseEntity<BookSnapshot> getOrderBookBySymbol(@PathVariable String symbol) {
+        return ResponseEntity.ok(orderBookRegistry.getBook(symbol).snapshot());
+    }
+
+    @GetMapping("/orderbook")
+    public ResponseEntity<List<BookSnapshot>> getAllOrderBooks() {
+        return ResponseEntity.ok(orderBookRegistry.getAllSnapshots());
+    }
+
+    @GetMapping("/orderbook/{symbol}/depth")
+    public ResponseEntity<OrderBookDepth> getOrderBookDepth(@PathVariable String symbol) {
+        return ResponseEntity.ok(orderBookRegistry.getBook(symbol).depth());
     }
 }

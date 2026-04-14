@@ -88,10 +88,32 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
     }
 
     public synchronized MarginSnapshot deposit(String userId, double amount) {
+        if (amount <= 0.0d) {
+            throw new IllegalArgumentException("Amount must be greater than 0");
+        }
         userCashBalance.merge(userId, amount, Double::sum);
         reservedMargin.putIfAbsent(userId, 0.0d);
         holdingsValue.putIfAbsent(userId, 0.0d);
         log.info("Deposited {} into margin account for user {}", inr(amount), userId);
+        return getMarginSnapshot(userId);
+    }
+
+    public synchronized MarginSnapshot withdraw(String userId, double amount) {
+        if (amount <= 0.0d) {
+            throw new IllegalArgumentException("Amount must be greater than 0");
+        }
+
+        double cashBalance = userCashBalance.getOrDefault(userId, 0.0d);
+        if (amount > cashBalance) {
+            throw new IllegalArgumentException(String.format(Locale.US,
+                    "INSUFFICIENT_FUNDS: available cash %s, requested %s",
+                    inr(cashBalance), inr(amount)));
+        }
+
+        userCashBalance.put(userId, cashBalance - amount);
+        reservedMargin.putIfAbsent(userId, 0.0d);
+        holdingsValue.putIfAbsent(userId, 0.0d);
+        log.info("Withdrew {} from margin account for user {}", inr(amount), userId);
         return getMarginSnapshot(userId);
     }
 
