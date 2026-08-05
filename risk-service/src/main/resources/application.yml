@@ -22,4 +22,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus

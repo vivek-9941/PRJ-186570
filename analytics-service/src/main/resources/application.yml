@@ -17,3 +17,9 @@ spring:
 kafka:
   consumer:
     topic: trade-executed
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
