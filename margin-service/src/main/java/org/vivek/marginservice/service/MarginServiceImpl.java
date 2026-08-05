@@ -1,22 +1,27 @@
 package org.vivek.marginservice.service;
 
 import io.grpc.stub.StreamObserver;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.transaction.annotation.Transactional;
 import org.vivek.commonmodule.model.CancellationEvent;
 import org.vivek.commonmodule.model.OrderSide;
 import org.vivek.commonmodule.model.OrderType;
 import org.vivek.commonmodule.model.TradeExecution;
+import org.vivek.marginservice.entity.MarginAccount;
+import org.vivek.marginservice.entity.OrderReservation;
+import org.vivek.marginservice.repository.MarginAccountRepository;
+import org.vivek.marginservice.repository.OrderReservationRepository;
 import org.vivek.trade.margin.grpc.MarginServiceGrpc;
 import org.vivek.trade.margin.grpc.ValidationRequest;
 import org.vivek.trade.margin.grpc.ValidationResponse;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @GrpcService
 @Slf4j
@@ -25,35 +30,14 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
     private static final double DELIVERY_MARGIN_RATE = 1.0d;
     private static final double INTRADAY_MARGIN_RATE = 0.2d;
 
-    private final Map<String, Double> userCashBalance = new ConcurrentHashMap<>();
-    private final Map<String, Double> reservedMargin = new ConcurrentHashMap<>();
-    private final Map<String, Double> holdingsValue = new ConcurrentHashMap<>();
-    private final Map<String, Reservation> orderReservations = new ConcurrentHashMap<>();
+    @Autowired
+    private MarginAccountRepository marginAccountRepository;
+
+    @Autowired
+    private OrderReservationRepository orderReservationRepository;
 
     @Value("${grpc.server.port:9094}")
     private int port;
-
-    @PostConstruct
-    public void init() {
-        userCashBalance.clear();
-        userCashBalance.put("U1", 100000.0d);
-        userCashBalance.put("U2", 250000.0d);
-        userCashBalance.put("U3", 50000.0d);
-
-        reservedMargin.clear();
-        reservedMargin.put("U1", 0.0d);
-        reservedMargin.put("U2", 0.0d);
-        reservedMargin.put("U3", 0.0d);
-
-        holdingsValue.clear();
-        holdingsValue.put("U1", 150000.0d);
-        holdingsValue.put("U2", 80000.0d);
-        holdingsValue.put("U3", 0.0d);
-
-        orderReservations.clear();
-
-        log.info("MarginService initialized on port {} with {} cash accounts", port, userCashBalance.size());
-    }
 
     @Override
     public void validate(ValidationRequest request, StreamObserver<ValidationResponse> responseObserver) {
@@ -79,40 +63,47 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
     }
 
     public synchronized MarginSnapshot getMarginSnapshot(String userId) {
-        double cashBalance = userCashBalance.getOrDefault(userId, 0.0d);
-        double collateral = holdingsValue.getOrDefault(userId, 0.0d);
-        double reserved = reservedMargin.getOrDefault(userId, 0.0d);
-        double available = cashBalance + collateral - reserved;
-        double totalNetworth = cashBalance + collateral;
-        return new MarginSnapshot(cashBalance, collateral, reserved, available, totalNetworth);
+        MarginAccount account = marginAccountRepository.findById(userId)
+                .orElse(new MarginAccount(userId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, Instant.now()));
+
+        double cashBalance = account.getCashBalance().doubleValue();
+        double holdingsValue = account.getHoldingsValue().doubleValue();
+        double reserved = account.getReservedMargin().doubleValue();
+        double available = cashBalance + holdingsValue - reserved;
+        double totalNetworth = cashBalance + holdingsValue;
+        return new MarginSnapshot(cashBalance, holdingsValue, reserved, available, totalNetworth);
     }
 
+    @Transactional
     public synchronized MarginSnapshot deposit(String userId, double amount) {
         if (amount <= 0.0d) {
             throw new IllegalArgumentException("Amount must be greater than 0");
         }
-        userCashBalance.merge(userId, amount, Double::sum);
-        reservedMargin.putIfAbsent(userId, 0.0d);
-        holdingsValue.putIfAbsent(userId, 0.0d);
+        MarginAccount account = marginAccountRepository.findById(userId)
+                .orElse(new MarginAccount(userId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, Instant.now()));
+        account.setCashBalance(account.getCashBalance().add(BigDecimal.valueOf(amount)));
+        marginAccountRepository.save(account);
         log.info("Deposited {} into margin account for user {}", inr(amount), userId);
         return getMarginSnapshot(userId);
     }
 
+    @Transactional
     public synchronized MarginSnapshot withdraw(String userId, double amount) {
         if (amount <= 0.0d) {
             throw new IllegalArgumentException("Amount must be greater than 0");
         }
 
-        double cashBalance = userCashBalance.getOrDefault(userId, 0.0d);
+        MarginAccount account = marginAccountRepository.findById(userId)
+                .orElse(new MarginAccount(userId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, Instant.now()));
+        double cashBalance = account.getCashBalance().doubleValue();
         if (amount > cashBalance) {
             throw new IllegalArgumentException(String.format(Locale.US,
                     "INSUFFICIENT_FUNDS: available cash %s, requested %s",
                     inr(cashBalance), inr(amount)));
         }
 
-        userCashBalance.put(userId, cashBalance - amount);
-        reservedMargin.putIfAbsent(userId, 0.0d);
-        holdingsValue.putIfAbsent(userId, 0.0d);
+        account.setCashBalance(account.getCashBalance().subtract(BigDecimal.valueOf(amount)));
+        marginAccountRepository.save(account);
         log.info("Withdrew {} from margin account for user {}", inr(amount), userId);
         return getMarginSnapshot(userId);
     }
@@ -124,18 +115,29 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
                     "spring.json.value.default.type=org.vivek.commonmodule.model.TradeExecution"
             }
     )
+    @Transactional
     public void onTradeExecuted(TradeExecution trade) {
         synchronized (this) {
-            releaseReservedMargin(trade.getBuyOrderId(), "trade execution");
-            releaseReservedMargin(trade.getSellOrderId(), "trade execution");
+            releaseReservation(trade.getBuyOrderId());
+            releaseReservation(trade.getSellOrderId());
 
             double tradeValue = trade.getExecutedPrice() * trade.getQuantity();
             if (trade.getBuyerId() != null && !trade.getBuyerId().isBlank()) {
-                userCashBalance.merge(trade.getBuyerId(), -tradeValue, Double::sum);
+                marginAccountRepository.findById(trade.getBuyerId()).ifPresent(account -> {
+                    account.setCashBalance(
+                            account.getCashBalance().subtract(BigDecimal.valueOf(
+                                    trade.getExecutedPrice() * trade.getQuantity())));
+                    marginAccountRepository.save(account);
+                });
                 log.info("Trade settled BUY side: userId={} debited {}", trade.getBuyerId(), inr(tradeValue));
             }
             if (trade.getSellerId() != null && !trade.getSellerId().isBlank()) {
-                userCashBalance.merge(trade.getSellerId(), tradeValue, Double::sum);
+                marginAccountRepository.findById(trade.getSellerId()).ifPresent(account -> {
+                    account.setCashBalance(
+                            account.getCashBalance().add(BigDecimal.valueOf(
+                                    trade.getExecutedPrice() * trade.getQuantity())));
+                    marginAccountRepository.save(account);
+                });
                 log.info("Trade settled SELL side: userId={} credited {}", trade.getSellerId(), inr(tradeValue));
             }
         }
@@ -148,13 +150,17 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
                     "spring.json.value.default.type=org.vivek.commonmodule.model.CancellationEvent"
             }
     )
+    @Transactional
     public void onOrderCancelled(CancellationEvent event) {
         synchronized (this) {
-            double released = releaseReservedMargin(event.getOrderId(), "cancellation");
-            log.info("Margin released {} for cancelled order {}", inr(released), event.getOrderId());
+            releaseReservation(event.getOrderId());
+            log.info("Margin released for cancelled order {}", event.getOrderId());
         }
     }
 
+    // synchronized + @Transactional: synchronized prevents JVM-level race condition,
+    // @Transactional provides database atomicity and rollback
+    @Transactional
     private synchronized ValidationOutcome validateAndReserve(ValidationRequest request) {
         String userId = request.getUserId();
         String sideValue = request.getSide();
@@ -165,17 +171,21 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
         double grossRequiredMargin = request.getQuantity() * request.getPrice() * marginRate;
         double requiredMargin = shouldRequireMargin(side, orderType) ? grossRequiredMargin : 0.0d;
 
-        double cashBalance = userCashBalance.getOrDefault(userId, 0.0d);
-        double collateral = holdingsValue.getOrDefault(userId, 0.0d);
-        double reserved = reservedMargin.getOrDefault(userId, 0.0d);
-        double available = cashBalance + collateral - reserved;
+        MarginAccount account = marginAccountRepository
+                .findById(userId)
+                .orElse(new MarginAccount(userId, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, Instant.now()));
+
+        double cashBalance = account.getCashBalance().doubleValue();
+        double holdingsValue = account.getHoldingsValue().doubleValue();
+        double reserved = account.getReservedMargin().doubleValue();
+        double available = cashBalance + holdingsValue - reserved;
 
         if (side == OrderSide.BUY && requiredMargin > available) {
             log.debug("Margin check userId={} required={} available={} result={}",
                     userId, inr(requiredMargin), inr(available), "FAIL");
             return new ValidationOutcome(false, String.format(Locale.US,
                     "INSUFFICIENT_MARGIN: required %s, available %s, cash %s, holdings %s, reserved %s",
-                    inr(requiredMargin), inr(available), inr(cashBalance), inr(collateral), inr(reserved)));
+                    inr(requiredMargin), inr(available), inr(cashBalance), inr(holdingsValue), inr(reserved)));
         }
 
         if (side == OrderSide.SELL && orderType == OrderType.IOC && requiredMargin > available) {
@@ -186,16 +196,37 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
                     inr(requiredMargin), inr(available)));
         }
 
-        double updatedReserved = reservedMargin.merge(userId, requiredMargin, Double::sum);
-        reservedMargin.putIfAbsent(userId, updatedReserved);
-        orderReservations.put(request.getOrderId(), new Reservation(userId, requiredMargin));
+        // Update reserved margin in DB — atomic with @Transactional
+        account.setReservedMargin(
+                account.getReservedMargin().add(BigDecimal.valueOf(requiredMargin)));
+        marginAccountRepository.save(account);
 
+        // Record per-order reservation for later release
+        orderReservationRepository.save(
+                new OrderReservation(request.getOrderId(),
+                        userId, BigDecimal.valueOf(requiredMargin), Instant.now()));
+
+        double updatedReserved = account.getReservedMargin().doubleValue();
         log.debug("Margin check userId={} required={} available={} result={}",
                 userId, inr(requiredMargin), inr(available), "PASS");
 
         return new ValidationOutcome(true, String.format(Locale.US,
                 "MARGIN_OK: required=%s available=%s reserved=%s",
                 inr(requiredMargin), inr(available), inr(updatedReserved)));
+    }
+
+    private void releaseReservation(String orderId) {
+        if (orderId == null || orderId.isBlank()) return;
+        orderReservationRepository.findByOrderId(orderId).ifPresent(reservation -> {
+            marginAccountRepository.findById(reservation.getUserId()).ifPresent(account -> {
+                account.setReservedMargin(
+                        account.getReservedMargin()
+                                .subtract(reservation.getAmount())
+                                .max(BigDecimal.ZERO));
+                marginAccountRepository.save(account);
+            });
+            orderReservationRepository.deleteByOrderId(orderId);
+        });
     }
 
     private double resolveMarginRate(OrderType orderType) {
@@ -231,24 +262,6 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
             }
         };
     }
-    
-    private double releaseReservedMargin(String orderId, String reason) {
-        if (orderId == null || orderId.isBlank()) {
-            return 0.0d;
-        }
-
-        Reservation reservation = orderReservations.remove(orderId);
-        if (reservation == null || reservation.amount() <= 0.0d) {
-            return 0.0d;
-        }
-
-        reservedMargin.compute(reservation.userId(), (userId, current) -> {
-            double existing = current == null ? 0.0d : current;
-            return Math.max(0.0d, existing - reservation.amount());
-        });
-        log.info("Released {} reserved margin for order {} after {}", inr(reservation.amount()), orderId, reason);
-        return reservation.amount();
-    }
 
     private String inr(double amount) {
         return String.format(Locale.US, "₹%.2f", amount);
@@ -261,9 +274,6 @@ public class MarginServiceImpl extends MarginServiceGrpc.MarginServiceImplBase {
             double availableMargin,
             double totalNetworth
     ) {
-    }
-
-    private record Reservation(String userId, double amount) {
     }
 
     private record ValidationOutcome(boolean success, String reason) {
