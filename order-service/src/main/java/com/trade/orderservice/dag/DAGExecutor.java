@@ -29,7 +29,6 @@ public class DAGExecutor {
     private final ComplianceServiceGrpc.ComplianceServiceFutureStub complianceStub;
     private final ApplicationEventPublisher eventPublisher;
     private final DAGExecutor self;
-
     private final ExecutorService executorService;
     private final ScheduledExecutorService scheduledExecutor;
 
@@ -57,6 +56,8 @@ public class DAGExecutor {
 
     @Timed("dag.execution")
     public CompletableFuture<DAGResult> execute(Order order) {
+        long start  = System.nanoTime();
+
         log.info("Starting DAG execution for order: {}", order.getOrderId());
 
         CompletableFuture<TaskResult> riskTask = executeWithRetry("risk-service", order, () -> {
@@ -73,6 +74,9 @@ public class DAGExecutor {
 
         return CompletableFuture.allOf(riskTask, marginTask, complianceTask).thenApply(v -> {
             List<TaskResult> results = Arrays.asList(riskTask.join(), marginTask.join(), complianceTask.join());
+            long end  = System.nanoTime();
+            double timeinms =  end - start;
+            log.info("Finished DAG execution in time: {}", timeinms);
             log.info("All tasks completed for order: {}", order.getOrderId());
             return DAGResult.from(order.getOrderId(), results);
         });

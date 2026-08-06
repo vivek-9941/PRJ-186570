@@ -4,6 +4,27 @@ server:
 spring:
   application:
     name: ledger-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/tradedb
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:vivek9941}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    clean-disabled: false
+    clean-on-validation-error: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -18,3 +39,9 @@ kafka:
   consumer:
     topic: trade-executed
     cancellation-topic: order-cancelled
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
