@@ -1,4 +1,4 @@
-# Trade Orchestration Engine
+# Trade Execution & Matching Engine
 
 A low-latency, DAG-based trade order orchestration engine that demonstrates
 correctness under concurrency — the core problem every real trading system solves.
