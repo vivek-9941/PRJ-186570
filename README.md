@@ -8,7 +8,8 @@ correctness under concurrency — the core problem every real trading system sol
 > financial validations before routing orders to a simulated exchange.
 
 ---
-
+## 🎥 Project Demo
+**▶️ [Watch the full demo on YouTube](https://youtu.be/tH3SyPzs-Cw)**
 ## Table of contents
 
 - [What this demonstrates](#what-this-demonstrates)
